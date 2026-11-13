@@ -104,12 +104,21 @@ $('applyLineup').addEventListener('click',()=>{
 // Two taps exchange field positions; touch and mouse dragging also work.
 let selectedPosition=null,dragging=null;
 function exchange(a,b){
- if(a===b){render();return;}
- if(currentSlot()!==0)return alert('Pas de beginopstelling aan in het eerste tijdvak (0 minuten).');
- const first=schedule()[0],ids=[first.keeper,...first.field];
+ if(a===b){selectedPosition=null;render();return;}
+ const current=schedule()[currentSlot()];
+ const ids=[current.keeper,...current.field];
+ if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>=ids.length||b>=ids.length)return;
  [ids[a],ids[b]]=[ids[b],ids[a]];
- state.startingKeeper=ids[0];state.fieldOrder=ids.slice(1);
- state.history={};save();render();
+ // Only change the selected time slot. Future substitutions and bench assignments stay intact.
+ current.keeper=ids[0];
+ current.field=ids.slice(1);
+ if(currentSlot()===0){
+  state.startingKeeper=ids[0];state.fieldOrder=ids.slice(1);
+  const key=[state.match,state.format,state.interval,state.duration,state.names.length,state.manualBench.join(','),state.startingKeeper,state.fieldOrder.join(',')].join(':');
+  state.history[key]=schedule();
+ }
+ selectedPosition=null;
+ save();render();
 }
 $('playersOnField').addEventListener('click',e=>{
  const el=e.target.closest('.player');if(!el||dragging?.moved)return;
