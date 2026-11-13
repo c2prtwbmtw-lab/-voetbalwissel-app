@@ -16,23 +16,34 @@ const firstKeeper=()=>Number.isInteger(state.startingKeeper)&&state.startingKeep
 const currentSlot=()=>Math.min(slots()-1,Math.floor(state.elapsed/(state.interval*60)));
 const name=i=>state.names[i]||`Speler ${i+1}`;
 const time=t=>`${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;
+// Versioned schedules prevent old, uneven cached rotations from being reused.
+const scheduleKey=()=>['balanced-v2',state.match,state.format,state.interval,state.duration,state.names.join('|'),state.manualBench.join(','),state.startingKeeper,state.fieldOrder.join(',')].join(':');
 function build(){
- const n=count(),on=baseCount(),benchSize=n-on,arr=[];
- // The keeper stays in goal for 10 minutes, independent of field substitution frequency.
+ const n=count(),benchSize=n-state.format,arr=[],played=Array(n).fill(0),benched=Array(n).fill(0),lastBench=Array(n).fill(-99);
+ const keeperOrder=Array.from({length:n},(_,j)=>(j+state.match-1)%n);
+ const preferred=firstKeeper();if(preferred!==null){keeperOrder.splice(keeperOrder.indexOf(preferred),1);keeperOrder.unshift(preferred);}
  for(let i=0;i<slots();i++){
-  const minute=i*state.interval;
-  const keeper= i===0&&firstKeeper()!==null?firstKeeper():(Math.floor(minute/10+state.match-1)%n);
-  const order=Array.from({length:n},(_,j)=>(j+Math.floor(i*benchSize)+(state.match-1)*2)%n);
-  const bench=[];
-  if(i===0&&validBench()){bench.push(...state.manualBench);}
-  else for(const p of order){if(p!==keeper&&bench.length<benchSize)bench.push(p);}
-  const field=Array.from({length:n},(_,j)=>j).filter(p=>p!==keeper&&!bench.includes(p));
-  if(i===0&&state.fieldOrder?.length){field.sort((a,b)=>{const ai=state.fieldOrder.indexOf(a),bi=state.fieldOrder.indexOf(b);return (ai<0?999:ai)-(bi<0?999:bi);});}
+  const minute=i*state.interval,keeper=keeperOrder[Math.floor(minute/10)%n];
+  let bench=[];
+  if(i===0&&validBench())bench=[...state.manualBench];
+  else {
+   const candidates=Array.from({length:n},(_,j)=>j).filter(j=>j!==keeper);
+   candidates.sort((a,b)=>{
+    // Prioritize players who have played most, but avoid consecutive bench turns.
+    const sa=played[a]*100+(lastBench[a]===i-1?-10000:0)+benched[a]*(-2);
+    const sb=played[b]*100+(lastBench[b]===i-1?-10000:0)+benched[b]*(-2);
+    return sb-sa || ((a-state.match+n)%n)-((b-state.match+n)%n);
+   });
+   bench=candidates.slice(0,benchSize);
+  }
+  const field=Array.from({length:n},(_,j)=>j).filter(j=>j!==keeper&&!bench.includes(j));
+  if(i===0&&state.fieldOrder?.length)field.sort((a,b)=>{const ai=state.fieldOrder.indexOf(a),bi=state.fieldOrder.indexOf(b);return (ai<0?999:ai)-(bi<0?999:bi);});
   arr.push({keeper,bench,field});
+  for(let j=0;j<n;j++){if(bench.includes(j)){benched[j]++;lastBench[j]=i;}else played[j]+=Math.min(state.interval,totalMinutes()-minute);}
  }
  return arr;
 }
-function schedule(){const k=[state.match,state.format,state.interval,state.duration,state.names.length,state.manualBench.join(','),state.startingKeeper,state.fieldOrder.join(',')].join(':');if(!state.history[k])state.history[k]=build();return state.history[k];}
+function schedule(){const k=scheduleKey();if(!state.history[k]){state.history={};state.history[k]=build();}return state.history[k];}
 function beep(){if(!state.sound)return;try{const C=window.AudioContext||window.webkitAudioContext;const ctx=new C(),o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=880;g.gain.value=.13;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.3);setTimeout(()=>ctx.close(),500);}catch(e){}navigator.vibrate?.([180,100,180]);}
 function notify(msg){$('notice').textContent=msg;$('notice').classList.add('show');setTimeout(()=>$('notice').classList.remove('show'),4000);beep();}
 function positions(){const f=state.format;if(f===6)return [{x:50,y:87,r:'K'},{x:17,y:65,r:'V'},{x:50,y:65,r:'V'},{x:83,y:65,r:'V'},{x:33,y:29,r:'A'},{x:67,y:29,r:'A'}];if(f===8)return [{x:50,y:89,r:'K'},{x:18,y:70,r:'V'},{x:50,y:72,r:'V'},{x:82,y:70,r:'V'},{x:30,y:48,r:'M'},{x:70,y:48,r:'M'},{x:32,y:24,r:'A'},{x:68,y:24,r:'A'}];return [{x:50,y:91,r:'K'},{x:12,y:73,r:'V'},{x:37,y:77,r:'V'},{x:63,y:77,r:'V'},{x:88,y:73,r:'V'},{x:25,y:51,r:'M'},{x:50,y:55,r:'M'},{x:75,y:51,r:'M'},{x:18,y:25,r:'A'},{x:50,y:20,r:'A'},{x:82,y:25,r:'A'}];}
@@ -46,7 +57,7 @@ function render(){
  const ids=[s.keeper,...s.field];$('playersOnField').innerHTML=positions().map((p,i)=>`<div class="player ${i===0?'keeper':''}" data-pos="${i}" data-player="${ids[i]}" style="left:${p.x}%;top:${p.y}%"><span>${p.r}</span><b></b></div>`).join('');
  [...$('playersOnField').children].forEach((el,i)=>el.querySelector('b').textContent=name(ids[i]));
  $('slots').innerHTML=rows.map((r,i)=>`<button class="slot ${i===currentSlot()?'selected':''}" data-slot="${i}">${i*state.interval}–${Math.min(totalMinutes(),(i+1)*state.interval)}</button>`).join('');
- $('tableBody').innerHTML=rows.map((r,i)=>`<tr class="${i===currentSlot()?'active':''}" data-slot="${i}"><td>${i*state.interval}–${Math.min(totalMinutes(),(i+1)*state.interval)}</td><td>${name(r.keeper)}</td><td>${r.bench.map(name).join(' · ')||'—'}</td></tr>`).join('');
+ $('tableBody').innerHTML=rows.map((r,i)=>`<tr class="${i===currentSlot()?'active':''}" data-slot="${i}"><td>${i*state.interval}–${Math.min(totalMinutes(),(i+1)*state.interval)}</td><td>${name(r.keeper)}</td><td>${r.bench.map(name).join(' · ')||'—'} <button type="button" class="edit-slot" data-edit="${i}" aria-label="Wijzig tijdvak ${i+1}">✎ Wijzig</button></td></tr>`).join('');
  $('prevMatch').disabled=state.match===1;$('sound').checked=state.sound;$('format').value=String(state.format);$('interval').value=String(state.interval);
  $('duration').value=String(state.duration);renderBenchPicker();
  $('playerCount').textContent=`${count()} spelers (minimaal ${state.format}, maximaal ${state.format+6})`;
@@ -64,7 +75,30 @@ function openNames(){$('namesPanel').hidden=false;$('nameFields').innerHTML='';s
 $('editNames').addEventListener('click',()=>{$('namesPanel').hidden?openNames():$('namesPanel').hidden=true;});
 $('saveNames').addEventListener('click',()=>{state.names=[...$('nameFields').querySelectorAll('input')].map((x,i)=>x.value.trim()||`Speler ${i+1}`);$('namesPanel').hidden=true;state.history={};save();render();});
 $('slots').addEventListener('click',e=>{const b=e.target.closest('[data-slot]');if(b){state.elapsed=Number(b.dataset.slot)*state.interval*60;state.running=false;state.halftime=isBreakPoint(state.elapsed);save();render();}});
-$('tableBody').addEventListener('click',e=>{const b=e.target.closest('[data-slot]');if(b){state.elapsed=Number(b.dataset.slot)*state.interval*60;state.running=false;state.halftime=isBreakPoint(state.elapsed);save();render();}});
+$('tableBody').addEventListener('click',e=>{
+ const edit=e.target.closest('[data-edit]');if(edit){openSlotEditor(Number(edit.dataset.edit));return;}
+ const b=e.target.closest('[data-slot]');if(b){state.elapsed=Number(b.dataset.slot)*state.interval*60;state.running=false;state.halftime=isBreakPoint(state.elapsed);save();render();}
+});
+let editingSlot=null;
+function openSlotEditor(i){
+ editingSlot=i;const r=schedule()[i];
+ $('slotEditorTitle').textContent=`Tijdvak ${i*state.interval}–${Math.min(totalMinutes(),(i+1)*state.interval)} minuten`;
+ const sel=$('editKeeper');sel.innerHTML='';state.names.forEach((nm,j)=>{const o=document.createElement('option');o.value=j;o.textContent=nm;sel.appendChild(o);});sel.value=String(r.keeper);
+ $('editBench').innerHTML='';state.names.forEach((nm,j)=>{const label=document.createElement('label');label.className='bench-option';const cb=document.createElement('input');cb.type='checkbox';cb.value=j;cb.checked=r.bench.includes(j);label.append(cb,document.createTextNode(' '+nm));$('editBench').appendChild(label);});
+ $('slotEditor').hidden=false;
+}
+$('closeSlotEditor').addEventListener('click',()=>{$('slotEditor').hidden=true;editingSlot=null;});
+$('saveSlotEditor').addEventListener('click',()=>{
+ if(editingSlot===null)return;
+ const keeper=Number($('editKeeper').value),bench=[...$('editBench').querySelectorAll('input:checked')].map(x=>Number(x.value));
+ if(bench.length!==count()-state.format)return alert(`Kies precies ${count()-state.format} wisselspelers.`);
+ if(bench.includes(keeper))return alert('De keeper mag niet op de wisselbank staan.');
+ const r=schedule()[editingSlot],oldField=r.field,oldKeeper=r.keeper;
+ r.keeper=keeper;r.bench=bench;
+ r.field=[...oldField,oldKeeper,...Array.from({length:count()},(_,j)=>j)].filter((j,i,arr)=>j!==keeper&&!bench.includes(j)&&arr.indexOf(j)===i).slice(0,state.format-1);
+ state.history[scheduleKey()]=schedule();
+ $('slotEditor').hidden=true;editingSlot=null;save();render();
+});
 $('play').addEventListener('click',()=>{if(state.halftime){state.halftime=false;state.running=true;}else{if(state.elapsed>=totalMinutes()*60)state.elapsed=0;state.running=!state.running;}lastTick=Date.now();save();render();});
 $('secondHalf').addEventListener('click',()=>{state.halftime=false;state.running=true;lastTick=Date.now();save();render();});
 $('reset').addEventListener('click',()=>{if(confirm('Wedstrijdklok opnieuw beginnen?'))resetClock();});
@@ -112,11 +146,7 @@ function exchange(a,b){
  // Only change the selected time slot. Future substitutions and bench assignments stay intact.
  current.keeper=ids[0];
  current.field=ids.slice(1);
- if(currentSlot()===0){
-  state.startingKeeper=ids[0];state.fieldOrder=ids.slice(1);
-  const key=[state.match,state.format,state.interval,state.duration,state.names.length,state.manualBench.join(','),state.startingKeeper,state.fieldOrder.join(',')].join(':');
-  state.history[key]=schedule();
- }
+ if(currentSlot()===0){state.startingKeeper=ids[0];state.fieldOrder=ids.slice(1);state.history[scheduleKey()]=schedule();}
  selectedPosition=null;
  save();render();
 }
