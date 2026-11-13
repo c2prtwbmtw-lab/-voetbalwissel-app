@@ -14,7 +14,7 @@ function generate(match){
  const sequence=Array.from({length:8},(_,i)=>keepers[(Math.floor(i/2)+offset)%4]);
  // Every player sits exactly twice, never in consecutive 5-minute slots.
  // Keeper cannot be on the bench during their 10-minute stint.
- const fixed=state.benchChoices[String(match)]|| (match===1?['Kyan','Sem']:null);
+ const fixed=state.benchChoices[`${match}-${state.interval}`]|| (match===1?['Kyan','Sem']:null);
  const random=rng(918273+match*991);
  const counts=Object.fromEntries(PLAYERS.map(p=>[p,0]));
  const benches=[];
@@ -49,7 +49,7 @@ function generateTen(match){
  const keepers=GROUPS[(match-1)%2];
  const offset=Math.floor((match-1)/2)%4;
  const sequence=Array.from({length:4},(_,i)=>keepers[(i+offset)%4]);
- const fixed=state.benchChoices[String(match)]||(match===1?['Kyan','Sem']:null);
+ const fixed=state.benchChoices[`${match}-${state.interval}`]||(match===1?['Kyan','Sem']:null);
  const used=new Set(),benches=[];
  function dfs(i){
   if(i===4)return used.size===8;
@@ -73,7 +73,14 @@ function generateTen(match){
   return {keeper,bench,field:PLAYERS.filter(p=>p!==keeper&&!bench.includes(p))};
  });
 }
-function schedule(){const key=`${state.match}-${state.interval}`;if(!state.history[key]){state.history[key]=generate(state.match);save();}return state.history[key];}
+function validSchedule(rows){
+ return Array.isArray(rows)&&rows.length===8&&rows.every(r=>r&&typeof r.keeper==='string'&&PLAYERS.includes(r.keeper)&&Array.isArray(r.bench)&&r.bench.length===2&&r.bench.every(p=>PLAYERS.includes(p))&&Array.isArray(r.field)&&r.field.length===5);
+}
+function schedule(){
+ const key=`${state.match}-${state.interval}`;
+ if(!validSchedule(state.history[key])){state.history[key]=generate(state.match);save();}
+ return state.history[key];
+}
 function displayName(p){return state.names[PLAYERS.indexOf(p)]||p;}
 function current(){return schedule()[state.slot];}
 function formatTime(t){return `${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;}
@@ -81,11 +88,12 @@ function beep(){if(!state.sound)return;try{const C=window.AudioContext||window.w
 function notify(msg){$('notice').textContent=msg;$('notice').classList.add('show');setTimeout(()=>$('notice').classList.remove('show'),5500);beep();}
 function setSlot(i){state.slot=Math.max(0,Math.min(7,i));state.elapsed=state.slot*300;state.running=false;state.startedAt=null;save();render();}
 function render(){
+ state.slot=Math.max(0,Math.min(7,Math.floor(state.elapsed/300)));
  const s=current();const field=[...s.field];
  $('matchNumber').textContent=state.match;
  $('groupName').textContent=state.match%2?'Johan · Joe · Jan · Safouane':'Kyan · Sem · Levi · Brenn';
  $('clock').textContent=formatTime(state.elapsed);
- $('period').textContent=`${Math.floor(state.elapsed/(state.interval*60))*state.interval}–${Math.min(40,(Math.floor(state.elapsed/(state.interval*60))+1)*state.interval)} min`;
+ $('period').textContent=state.elapsed>=2400?'Einde':`${Math.floor(state.elapsed/(state.interval*60))*state.interval}–${Math.min(40,(Math.floor(state.elapsed/(state.interval*60))+1)*state.interval)} min`;
  $('play').textContent=state.running?'⏸ Pauze':'▶ Start';
  $('progress').style.width=`${state.elapsed/2400*100}%`;
  $('keeperName').textContent=displayName(s.keeper);
@@ -98,7 +106,7 @@ function render(){
  $('sound').checked=state.sound;
  $('interval5').classList.toggle('selected',state.interval===5);
  $('interval10').classList.toggle('selected',state.interval===10);
- const chosen=state.benchChoices[String(state.match)]|| (state.match===1?['Kyan','Sem']:[]);
+ const chosen=state.benchChoices[`${state.match}-${state.interval}`]|| (state.match===1?['Kyan','Sem']:[]);
  $('benchChoices').innerHTML=PLAYERS.map(p=>`<label class="bench-option"><input type="checkbox" value="${p}" ${chosen.includes(p)?'checked':''}> ${displayName(p)}</label>`).join('');
 }
 for(const n of [5,10])$('interval'+n).addEventListener('click',()=>{if(state.interval===n)return;state.interval=n;state.running=false;state.startedAt=null;state.elapsed=0;state.slot=0;try{schedule();save();render();}catch(e){state.interval=n===5?10:5;alert(e.message);render();}});
