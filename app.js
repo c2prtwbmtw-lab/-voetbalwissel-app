@@ -63,7 +63,7 @@ function build(){
     bench=[...ranked(availableDef).slice(0,desiredDef),...ranked(availableAtt).slice(0,bs-desiredDef)];
    }
    // Handmatig gekozen beginbank alleen gebruiken wanneer de rolverdeling klopt.
-   if(i===0&&state.match===1&&validBench()&&!state.manualBench.includes(keeper)&&state.manualBench.filter(j=>def.has(j)).length===desiredDef){
+   if(i===0&&state.match===1&&validBench()&&!state.manualBench.includes(keeper)){
     bench=[...state.manualBench];
    }
   }
@@ -126,7 +126,7 @@ $('saveSlotEditor').addEventListener('click',()=>{
  const keeper=Number($('editKeeper').value),bench=[...$('editBench').querySelectorAll('input:checked')].map(x=>Number(x.value));
  if(bench.length!==count()-state.format)return alert(`Kies precies ${count()-state.format} wisselspelers.`);
  if(bench.includes(keeper))return alert('De keeper mag niet op de wisselbank staan.');
- if(state.format===6&&count()-state.format===2){const required=defenders().includes(keeper)?0:1;if(bench.filter(i=>defenders().includes(i)).length!==required)return alert(required===0?'Als een verdediger keept, kies twee aanvallers op de bank.':'Kies één verdediger en één aanvaller op de bank.');}
+ // Handmatige wissels mogen afwijken van de automatische positieverdeling.
  const r=schedule()[editingSlot],oldField=r.field,oldKeeper=r.keeper;
  r.keeper=keeper;r.bench=bench;
  r.field=[...oldField,oldKeeper,...Array.from({length:count()},(_,j)=>j)].filter((j,i,arr)=>j!==keeper&&!bench.includes(j)&&arr.indexOf(j)===i).slice(0,state.format-1);
@@ -188,7 +188,7 @@ $('applyLineup').addEventListener('click',()=>{
  if(state.manualBench.length!==bs)return alert(`Selecteer precies ${bs} wisselspelers.`);
  state.startingKeeper=Number($('startingKeeper').value);
  if(state.manualBench.includes(state.startingKeeper))return alert('De keeper mag niet op de wisselbank staan.');
- if(state.format===6&&bs===2){const required=defenders().includes(state.startingKeeper)?0:1;if(state.manualBench.filter(i=>defenders().includes(i)).length!==required)return alert(required===0?'Bij een verdedigende keeper beginnen twee aanvallers op de bank.':'Kies één verdediger en één aanvaller voor de beginwisselbank.');}
+ // Zelf gekozen beginwissels zijn altijd toegestaan, ongeacht de spelersrollen.
  state.fieldOrder=[];state.history={};resetClock();
 });
 // Two taps exchange field positions; touch and mouse dragging also work.
