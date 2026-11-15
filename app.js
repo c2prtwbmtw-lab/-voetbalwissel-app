@@ -9,6 +9,7 @@ let state={match:1,elapsed:0,running:false,format:6,interval:5,duration:40,names
 try{const old=JSON.parse(localStorage.getItem(KEY)||'null');if(old)state={...state,...old,running:false};else{const prev=JSON.parse(localStorage.getItem('voetbalwissel-v4')||localStorage.getItem('voetbalwissel-v3')||localStorage.getItem('voetbalwissel-v1')||'null');if(prev){state={...state,...prev,running:false,halftime:false};}}}catch(e){}
 const save=()=>localStorage.setItem(KEY,JSON.stringify({...state,running:false}));
 if(!state.scores||typeof state.scores!=='object')state.scores={};
+if(!Number.isInteger(Number(state.interval))||Number(state.interval)<5||Number(state.interval)>40||Number(state.interval)%5!==0)state.interval=5;else state.interval=Number(state.interval);
 const defenders=()=>Array.isArray(state.defenders)?state.defenders.filter(i=>Number.isInteger(i)&&i>=0&&i<count()):state.names.map((nm,i)=>/^(joe|johan|kyan|jan)$/i.test(nm.trim())?i:-1).filter(i=>i>=0);
 const currentScore=()=>state.scores[state.match]||{home:0,away:0};
 const baseCount=()=>state.format;
@@ -99,7 +100,7 @@ function render(){
  [...$('playersOnField').children].forEach((el,i)=>el.querySelector('b').textContent=name(ids[i]));
  $('slots').innerHTML=rows.map((r,i)=>`<button class="slot ${i===currentSlot()?'selected':''}" data-slot="${i}">${i*state.interval}–${Math.min(totalMinutes(),(i+1)*state.interval)}</button>`).join('');
  $('tableBody').innerHTML=rows.map((r,i)=>`<tr class="${i===currentSlot()?'active':''}" data-slot="${i}"><td>${i*state.interval}–${Math.min(totalMinutes(),(i+1)*state.interval)}</td><td>${name(r.keeper)}</td><td>${r.bench.map(name).join(' · ')||'—'} <button type="button" class="edit-slot" data-edit="${i}" aria-label="Wijzig tijdvak ${i+1}">✎ Wijzig</button></td></tr>`).join('');
- $('prevMatch').disabled=state.match===1;$('sound').checked=state.sound;$('format').value=String(state.format);$('interval').value=String(state.interval);$('interval5').classList.toggle('selected',state.interval===5);$('interval10').classList.toggle('selected',state.interval===10);
+ $('prevMatch').disabled=state.match===1;$('sound').checked=state.sound;$('format').value=String(state.format);$('interval').value=String(state.interval);
  $('duration').value=String(state.duration);renderBenchPicker();renderDefenderPicker();
  $('playerCount').textContent=`${count()} spelers (minimaal ${state.format}, maximaal ${state.format+6})`;
  $('summary').textContent=`${durationInfo().label}: ${durationInfo().periods} × ${durationInfo().minutes} minuten (${totalMinutes()} minuten), met rust tussen de periodes. Precies ${state.format} spelers op het veld, inclusief keeper. Keeper om de 10 minuten; veldspelers om de ${state.interval} minuten.`;
@@ -109,8 +110,8 @@ function resetClock(){state.elapsed=0;state.running=false;state.halftime=false;s
 function adjustFormat(f){state.format=f;state.names=state.names.slice(0,f+6);while(state.names.length<f)state.names.push(`Speler ${state.names.length+1}`);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.defenders=null;state.history={};resetClock();}
 $('format').addEventListener('change',e=>adjustFormat(Number(e.target.value)));
 $('duration').addEventListener('change',e=>{state.duration=e.target.value;state.history={};resetClock();});
-$('interval').addEventListener('change',e=>{state.interval=Number(e.target.value);state.history={};resetClock();});
-for(const minutes of [5,10])$('interval'+minutes).addEventListener('click',()=>{if(state.interval===minutes)return;state.interval=minutes;state.history={};resetClock();});
+$('interval').addEventListener('change',e=>{const minutes=Number(e.target.value);if(!Number.isInteger(minutes)||minutes<5||minutes>40||minutes%5!==0)return;state.interval=minutes;state.history={};resetClock();});
+
 $('addPlayer').addEventListener('click',()=>{if(count()>=state.format+6)return alert('Maximaal 6 extra wisselspelers.');state.names.push(`Speler ${count()+1}`);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.history={};save();render();openNames();});
 $('removePlayer').addEventListener('click',()=>{if(count()<=state.format)return alert('Er moeten genoeg spelers voor het veld zijn.');state.names.pop();state.defenders=defenders().filter(i=>i<state.names.length);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.history={};save();render();openNames();});
 function openNames(){$('namesPanel').hidden=false;$('nameFields').innerHTML='';state.names.forEach((v,i)=>{const label=document.createElement('label');label.textContent=`Speler ${i+1}`;const inp=document.createElement('input');inp.value=v;inp.maxLength=30;label.appendChild(inp);$('nameFields').appendChild(label);});}
