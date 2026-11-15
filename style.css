@@ -9,3 +9,42 @@
 .scoreboard{display:flex;justify-content:center;align-items:center;gap:20px;text-align:center}.scoreteam{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px}.scoreteam strong{font-size:48px;line-height:1.1;font-variant-numeric:tabular-nums}.scoreseparator{font-size:36px;color:#8a9d90}.scorebuttons{display:flex;gap:12px}.scorebuttons button{min-width:54px;font-size:23px;padding:9px 14px}.scorecard{padding-top:12px;padding-bottom:12px}
 
 .interval-setting{font-size:13px;font-weight:700}.interval-buttons{display:flex;gap:7px;margin-top:7px}.interval-buttons button{flex:1;padding:12px 7px;background:#eaf2ec;color:#245d42;border:2px solid transparent;white-space:nowrap}.interval-buttons button.selected{background:#126846;color:#fff;border-color:#0a5435}.interval-buttons button:focus-visible{outline:3px solid #e9b935;outline-offset:2px}
+
+.topnav{position:relative;display:flex;justify-content:flex-start;margin-bottom:15px}
+.menu-toggle{padding:10px 14px}
+.main-menu:not([hidden]){position:absolute;top:46px;left:0;z-index:20;display:flex;flex-direction:column;gap:5px;background:white;border:1px solid #d9e8dd;border-radius:13px;padding:9px;box-shadow:0 8px 24px #102e2033;min-width:210px}
+.main-menu button{text-align:left}
+.archive-entry{display:flex;width:100%;flex-wrap:wrap;justify-content:space-between;align-items:center;text-align:left;gap:6px;padding:15px;margin-top:10px}
+.archive-entry small{width:100%}
+.archive-score{text-align:center;font-size:44px;font-weight:800;margin:20px}
+.history-view h3{margin-top:18px}
+
+.topnav{align-items:center;gap:8px;flex-wrap:nowrap}
+.topnav .menu-toggle{flex:0 0 auto}
+.topnav .save-top{flex:1;min-width:0;font-size:13px;padding:11px 8px;white-space:nowrap}
+#archiveStatus:empty{display:none}
+#archiveStatus{margin:0 4px 12px}
+
+/* FC Volendam-inspired orange, black and white accents; keep the pitch green. */
+:root{color:#202020;background:#fff4e9}
+header{border-bottom:3px solid #f47721;margin-bottom:14px}
+header p,.hint{color:#655b55}
+.eyebrow,small{color:#a14b11}
+.card{box-shadow:0 3px 18px #42200b12}
+button{background:#ee6b16;color:#fff}
+button.secondary{background:#242424;color:#fff}
+button:focus-visible{outline:3px solid #171717;outline-offset:2px}
+.pill{background:#fff0e0;color:#a14b11}
+.progress{background:#fbe5d2}
+.progress>div{background:#ee6b16}
+.slot{background:#fff0e0;color:#753809}
+.slot.selected{background:#ee6b16;color:#fff}
+.interval-buttons button{background:#fff0e0;color:#753809}
+.interval-buttons button.selected{background:#ee6b16;color:#fff;border-color:#a94b08}
+.bench,.bench-picker{background:#fff7ef}
+.edit-slot{background:#ffe5cc;color:#783605}
+tr.active{background:#fff0e0}
+.scoreseparator{color:#ee6b16}
+.main-menu:not([hidden]){border-color:#f3c6a5;box-shadow:0 8px 24px #48200633}
+#notice{background:#242424}
+.topnav .save-top{background:#ee6b16}

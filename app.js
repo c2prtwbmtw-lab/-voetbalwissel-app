@@ -251,3 +251,66 @@ let lastTick=Date.now();setInterval(()=>{
 },200);
 window.addEventListener('pagehide',()=>{state.running=false;save();});
 render();if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+
+
+// Separate immutable match snapshots; these are never loaded into the live match.
+const ARCHIVE_KEY='voetbalwissel-match-archive-v1';
+function getArchive(){try{const data=JSON.parse(localStorage.getItem(ARCHIVE_KEY)||'[]');return Array.isArray(data)?data:[];}catch(e){return [];}}
+function archiveMatch(){
+ if(state.running){notify('Pauzeer eerst de wedstrijd om op te slaan');return;}
+ const records=getArchive();
+ if(records.some(r=>r.match===state.match)){notify('Deze wedstrijd staat al in de historie');return;}
+ if(!confirm(`Wedstrijd ${state.match} definitief opslaan in de historie?`))return;
+ const snapshot={
+  id:Date.now(),match:state.match,date:new Date().toISOString(),
+  format:state.format,interval:state.interval,duration:String(state.duration),
+  elapsed:state.elapsed,score:{...currentScore()},names:[...state.names],
+  schedule:schedule().map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}))
+ };
+ records.unshift(snapshot);
+ try{localStorage.setItem(ARCHIVE_KEY,JSON.stringify(records));}
+ catch(e){notify('Opslaan mislukt: onvoldoende opslagruimte');return;}
+ $('archiveStatus').textContent='Wedstrijd '+state.match+' opgeslagen in historie.';
+ notify('Wedstrijd opgeslagen in historie');
+}
+function archiveText(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function renderArchive(){
+ const records=getArchive();
+ $('historyDetail').hidden=true;
+ $('historyList').hidden=false;
+ $('historyList').innerHTML=records.length?records.map((r,i)=>{
+  const dt=new Date(r.date);const date=Number.isNaN(dt.getTime())?'Onbekende datum':dt.toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+  return `<button class="archive-entry secondary" data-archive="${i}"><span>Wedstrijd ${archiveText(r.match)} · ${archiveText(date)}</span><strong>${archiveText(r.score.home)} – ${archiveText(r.score.away)}</strong><small>${archiveText(r.format)} tegen ${archiveText(r.format)} · Bekijken ›</small></button>`;
+ }).join(''):'<p class="hint">Er zijn nog geen wedstrijden opgeslagen.</p>';
+}
+function openArchiveDetail(index){
+ const r=getArchive()[index];if(!r)return;
+ const n=i=>archiveText(r.names[i]||`Speler ${i+1}`);
+ const d=DURATIONS[r.duration]||DURATIONS['40'];
+ $('historyList').hidden=true;$('historyDetail').hidden=false;
+ $('historyDetail').innerHTML=`<button id="archiveListBack" class="secondary">← Alle wedstrijden</button>
+  <h3>Wedstrijd ${archiveText(r.match)} · ${archiveText(new Date(r.date).toLocaleDateString('nl-NL'))}</h3>
+  <div class="archive-score">${archiveText(r.score.home)} – ${archiveText(r.score.away)}</div>
+  <p>${archiveText(r.format)} tegen ${archiveText(r.format)} · ${archiveText(d.label)} · Wisselen om de ${archiveText(r.interval)} minuten</p>
+  <p class="hint">Opgeslagen opstelling (alleen bekijken)</p>
+  <div class="table-wrap"><table><thead><tr><th>Min.</th><th>Keeper</th><th>Wisselbank</th></tr></thead><tbody>${r.schedule.map((s,i)=>`<tr><td>${i*r.interval}–${Math.min(d.total,(i+1)*r.interval)}</td><td>${n(s.keeper)}</td><td>${s.bench.map(n).join(' · ')||'—'}</td></tr>`).join('')}</tbody></table></div>`;
+ $('archiveListBack').addEventListener('click',renderArchive);
+}
+function showScreen(screen){
+ $('mainView').hidden=screen!=='home';
+ $('historyView').hidden=screen!=='history';
+ if(screen==='history')renderArchive();
+ $('mainMenu').hidden=true;$('menuToggle').setAttribute('aria-expanded','false');
+ window.scrollTo(0,0);
+}
+$('menuToggle').addEventListener('click',()=>{
+ const opening=$('mainMenu').hidden;$('mainMenu').hidden=!opening;
+ $('menuToggle').setAttribute('aria-expanded',String(opening));
+});
+$('menuHome').addEventListener('click',()=>showScreen('home'));
+$('menuHistory').addEventListener('click',()=>showScreen('history'));
+$('historyBack').addEventListener('click',()=>showScreen('home'));
+$('archiveMatch').addEventListener('click',archiveMatch);
+$('historyList').addEventListener('click',e=>{
+ const b=e.target.closest('[data-archive]');if(b)openArchiveDetail(Number(b.dataset.archive));
+});
