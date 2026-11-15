@@ -69,6 +69,15 @@ function build(){
   }
   const field=Array.from({length:n},(_,j)=>j).filter(j=>j!==keeper&&!bench.includes(j));
   if(i===0&&state.match===1&&state.fieldOrder?.length)field.sort((a,b)=>{const ai=state.fieldOrder.indexOf(a),bi=state.fieldOrder.indexOf(b);return (ai<0?999:ai)-(bi<0?999:bi);});
+  // Preserve the formation from the preceding interval: players remaining
+  // on the pitch stay in their positions; incoming players fill empty spots.
+  if(i>0){
+   const prev=arr[i-1].field,ordered=Array(field.length).fill(null);
+   const incoming=field.filter(j=>!prev.includes(j));
+   prev.forEach((j,pos)=>{if(pos<ordered.length&&field.includes(j))ordered[pos]=j;});
+   for(let pos=0;pos<ordered.length;pos++)if(ordered[pos]===null)ordered[pos]=incoming.shift();
+   field.splice(0,field.length,...ordered);
+  }
   arr.push({keeper,bench,field});
   for(let j=0;j<n;j++){if(!bench.includes(j))played[j]+=weight;else lastBench[j]=i;}
  }
@@ -195,16 +204,25 @@ $('applyLineup').addEventListener('click',()=>{
 let selectedPosition=null,dragging=null;
 function exchange(a,b){
  if(a===b){selectedPosition=null;render();return;}
- const current=schedule()[currentSlot()];
+ const rows=schedule(),slot=currentSlot(),current=rows[slot];
  const ids=[current.keeper,...current.field];
  if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>=ids.length||b>=ids.length)return;
  [ids[a],ids[b]]=[ids[b],ids[a]];
- // Only change the selected time slot. Future substitutions and bench assignments stay intact.
- current.keeper=ids[0];
- current.field=ids.slice(1);
- if(currentSlot()===0){state.startingKeeper=ids[0];state.fieldOrder=ids.slice(1);state.history[scheduleKey()]=schedule();}
- selectedPosition=null;
- save();render();
+ current.keeper=ids[0];current.field=ids.slice(1);
+ // Continue the chosen formation into following time slots without changing
+ // the planned goalkeeper or bench for those slots.
+ for(let i=slot+1;i<rows.length;i++){
+  const prev=rows[i-1].field,r=rows[i],ordered=Array(r.field.length).fill(null);
+  const incoming=r.field.filter(j=>!prev.includes(j));
+  prev.forEach((j,pos)=>{if(pos<ordered.length&&r.field.includes(j))ordered[pos]=j;});
+  for(let pos=0;pos<ordered.length;pos++)if(ordered[pos]===null)ordered[pos]=incoming.shift();
+  r.field=ordered;
+ }
+ if(slot===0){state.fieldOrder=[...current.field];state.startingKeeper=current.keeper;}
+ // The starting-keeper/field-order fields affect the cache key. Save the
+ // edited rows under the NEW key rather than rebuilding them.
+ state.history={[scheduleKey()]:rows};
+ selectedPosition=null;save();render();
 }
 $('playersOnField').addEventListener('click',e=>{
  const el=e.target.closest('.player');if(!el||dragging?.moved)return;
