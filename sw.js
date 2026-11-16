@@ -1,5 +1,5 @@
-const CACHE='voetbalwissel-offline-v23';
-const ASSETS=['./','./index.html','./app.js','./style.css','./manifest.webmanifest','./icon-180.png','./icon-192.png','./icon-512.png'];
+const CACHE='voetbalwissel-offline-v24';
+const ASSETS=['./','./index.html','./app.js','./style.css','./update.js','./manifest.webmanifest','./icon-180.png','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)));
 });

@@ -52,3 +52,11 @@ tr.active{background:#fff0e0}
 .update-banner:not([hidden]){position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:12px;right:12px;z-index:9999;display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:#242424;color:#fff;border:2px solid #ee6b16;padding:12px;border-radius:14px;box-shadow:0 5px 22px #0005}
 .update-banner span{flex:1 1 130px;font-weight:700}
 .update-banner button{font-size:13px;padding:10px}
+
+/* Update button stays in the header, orange and glowing only when a new version is ready. */
+.topnav .update-indicator{flex:0 0 auto;display:flex;align-items:center;gap:4px;background:#242424;color:#fff;border:2px solid #ee6b16;padding:9px 8px;font-size:12px;white-space:nowrap;min-height:40px}
+.topnav .update-indicator.is-available{background:#ee6b16;color:#fff;animation:updateGlow 1.4s ease-in-out infinite;box-shadow:0 0 0 3px #ee6b1655}
+.topnav .update-indicator.is-checking{opacity:.7}
+@keyframes updateGlow{0%,100%{box-shadow:0 0 0 2px #ee6b1655}50%{box-shadow:0 0 0 7px #ee6b1622,0 0 15px #ee6b16}}
+@media(prefers-reduced-motion:reduce){.topnav .update-indicator.is-available{animation:none;box-shadow:0 0 0 3px #ee6b16}}
+@media(max-width:370px){.topnav .update-indicator span{display:none}.topnav .update-indicator{padding:9px 12px}}
