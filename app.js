@@ -269,7 +269,7 @@ let lastTick=Date.now();setInterval(()=>{
  lastTick=state.running ? lastTick + Math.floor((now-lastTick)/1000)*1000 : now;
 },200);
 window.addEventListener('pagehide',()=>{state.running=false;save();});
-render();if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+render();
 
 
 // Separate immutable match snapshots; these are never loaded into the live match.

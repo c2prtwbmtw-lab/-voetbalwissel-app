@@ -48,3 +48,7 @@ tr.active{background:#fff0e0}
 .main-menu:not([hidden]){border-color:#f3c6a5;box-shadow:0 8px 24px #48200633}
 #notice{background:#242424}
 .topnav .save-top{background:#ee6b16}
+
+.update-banner:not([hidden]){position:fixed;bottom:calc(12px + env(safe-area-inset-bottom));left:12px;right:12px;z-index:9999;display:flex;align-items:center;gap:9px;flex-wrap:wrap;background:#242424;color:#fff;border:2px solid #ee6b16;padding:12px;border-radius:14px;box-shadow:0 5px 22px #0005}
+.update-banner span{flex:1 1 130px;font-weight:700}
+.update-banner button{font-size:13px;padding:10px}
