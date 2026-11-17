@@ -60,3 +60,36 @@ tr.active{background:#fff0e0}
 @keyframes updateGlow{0%,100%{box-shadow:0 0 0 2px #ee6b1655}50%{box-shadow:0 0 0 7px #ee6b1622,0 0 15px #ee6b16}}
 @media(prefers-reduced-motion:reduce){.topnav .update-indicator.is-available{animation:none;box-shadow:0 0 0 3px #ee6b16}}
 @media(max-width:370px){.topnav .update-indicator span{display:none}.topnav .update-indicator{padding:9px 12px}}
+
+/* V26: clubkleuren — alleen de presentatie verandert, nooit het veld of wedstrijdgegevens. */
+:root{--club-primary:#ee6b16;--club-secondary:#242424;--club-on-primary:#fff;--club-on-secondary:#fff;--club-tint:#fff0e0;--club-on-tint:#753809;--club-bg:#fff4e9}
+:root{background:var(--club-bg)}
+header{border-bottom-color:var(--club-primary)}
+button,.topnav .save-top{background:var(--club-primary);color:var(--club-on-primary)}
+button.secondary{background:var(--club-secondary);color:var(--club-on-secondary)}
+.pill,.slot,.interval-buttons button{background:var(--club-tint);color:var(--club-on-tint)}
+.slot.selected,.interval-buttons button.selected{background:var(--club-primary);color:var(--club-on-primary);border-color:var(--club-secondary)}
+.progress{background:var(--club-tint)}
+.progress>div{background:var(--club-primary)}
+.bench,.bench-picker{background:color-mix(in srgb,var(--club-primary) 5%,white)}
+.edit-slot{background:var(--club-tint);color:var(--club-on-tint)}
+tr.active{background:var(--club-tint)}
+.scoreseparator{color:var(--club-primary)}
+.eyebrow,small{color:var(--club-on-tint)}
+.main-menu:not([hidden]){border-color:var(--club-primary)}
+#notice{background:var(--club-secondary);color:var(--club-on-secondary)}
+.topnav .update-indicator{background:var(--club-secondary);color:var(--club-on-secondary);border-color:var(--club-primary)}
+.topnav .update-indicator.is-available{background:var(--club-primary);color:var(--club-on-primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--club-primary) 30%,transparent)}
+.update-banner:not([hidden]){background:var(--club-secondary);color:var(--club-on-secondary);border-color:var(--club-primary)}
+@keyframes updateGlow{0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,var(--club-primary) 35%,transparent)}50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--club-primary) 15%,transparent),0 0 15px var(--club-primary)}}
+.main-menu:not([hidden]){min-width:min(310px,calc(100vw - 30px));max-height:min(70dvh,540px);overflow-y:auto}
+.theme-menu{border-top:1px solid #ddd;padding:11px 4px 4px}
+.theme-menu-heading{font-size:13px;font-weight:800;margin:2px 4px 10px;color:#222}
+.theme-choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.theme-choice{display:flex;align-items:center;gap:7px;background:#fff!important;color:#222!important;border:2px solid #ddd;border-radius:9px;padding:8px 6px;font-size:11px;text-align:left;min-height:45px}
+.theme-choice[aria-pressed="true"]{border-color:#222;box-shadow:inset 0 0 0 1px #222}
+.theme-choice:focus-visible{outline:3px solid #222;outline-offset:2px}
+.theme-swatches{display:flex;flex:0 0 auto;overflow:hidden;border-radius:5px;border:1px solid #0002}
+.theme-swatch{width:13px;height:24px;display:block}
+.theme-name{min-width:0;line-height:1.2}
+.theme-hint{font-size:11px;color:#555;margin:10px 4px 0}
