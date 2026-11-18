@@ -1,4 +1,4 @@
-const CACHE='voetbalwissel-offline-v27';
+const CACHE='voetbalwissel-offline-v28';
 const ASSETS=['./','./index.html','./app.js','./style.css','./update.js','./themes.js','./manifest.webmanifest','./icon-180.png','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)));

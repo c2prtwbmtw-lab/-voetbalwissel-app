@@ -107,7 +107,7 @@ function setPosition(index,x,y){
 function renderKeeperMode(){
  const wrap=$('keeperModeSettings');wrap.hidden=state.format===6;
  $('keeperMode').value=state.keeperMode==='fixed'?'fixed':'rotate';
- $('fixedKeeperLabel').hidden=state.keeperMode!=='fixed';
+ $('fixedKeeperLabel').hidden=state.format===6||state.keeperMode!=='fixed';
  const sel=$('fixedKeeper'),value=String(state.fixedKeeper??firstKeeper()??0);
  sel.innerHTML='';state.names.forEach((nm,i)=>{const o=document.createElement('option');o.value=i;o.textContent=nm;sel.appendChild(o);});
  sel.value=value;
@@ -231,6 +231,7 @@ $('applyLineup').addEventListener('click',()=>{
 // Hold a player name for 3 seconds, then tap another name to exchange players.
 // Drag a player to move that formation position without changing the player name.
 let selectedPosition=null,dragging=null,holdTimer=null,suppressClick=false;
+function showSelection(pos){selectedPosition=pos;document.querySelectorAll('#playersOnField .player').forEach(el=>el.classList.toggle('chosen',Number(el.dataset.pos)===pos));$('formationHint').textContent='Speler geselecteerd (geel). Tik op een andere spelersnaam om te ruilen, of tik opnieuw om te annuleren.';}
 function exchange(a,b){
  if(a===b){selectedPosition=null;render();return;}
  const rows=schedule(),slot=currentSlot(),current=rows[slot];
@@ -259,9 +260,7 @@ $('playersOnField').addEventListener('pointerdown',e=>{
  if(e.target.closest('b')){
   holdTimer=setTimeout(()=>{
    if(!dragging||dragging.moved)return;
-   dragging.held=true;selectedPosition=dragging.pos;
-   el.classList.add('chosen');navigator.vibrate?.(90);
-   $('formationHint').textContent='Speler geselecteerd! Tik op de naam van de speler waarmee je wilt wisselen.';
+   dragging.held=true;showSelection(dragging.pos);navigator.vibrate?.(90);
   },3000);
  }
 });
@@ -281,9 +280,10 @@ $('playersOnField').addEventListener('pointerup',e=>{
 });
 $('playersOnField').addEventListener('pointercancel',()=>{cancelHold();dragging=null;});
 $('playersOnField').addEventListener('click',e=>{
- if(suppressClick||selectedPosition===null)return;
+ if(suppressClick)return;
  const el=e.target.closest('.player');if(!el||!e.target.closest('b'))return;
  const pos=Number(el.dataset.pos);
+ if(selectedPosition===null){showSelection(pos);return;}
  if(pos===selectedPosition){selectedPosition=null;render();return;}
  exchange(selectedPosition,pos);
  $('formationHint').textContent='Sleep spelers om de opstelling te veranderen. Houd een naam 3 seconden ingedrukt en tik daarna op een andere naam om te wisselen.';

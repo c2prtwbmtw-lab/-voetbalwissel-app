@@ -96,3 +96,9 @@ tr.active{background:var(--club-tint)}
 
 /* V27 formation and goalkeeper options */
 .keeper-mode{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:14px;padding:12px;border-radius:12px;background:#fff5e9}.keeper-mode label{font-size:13px;font-weight:700}.keeper-mode select{display:block;width:100%;margin-top:7px;padding:11px;border:1px solid #ddd;border-radius:9px;background:white;font-size:15px}.formation-reset{font-size:12px;padding:8px 12px;margin-top:10px}.pitch .player{touch-action:none;user-select:none;-webkit-user-select:none}.pitch .player b{touch-action:none;-webkit-touch-callout:none}.pitch .player.chosen b{outline:3px solid #ffd42a;box-shadow:0 0 0 4px #0008}.pitch .player.chosen span{outline:3px solid #ffd42a}
+
+/* V28: selected name is obvious on touch screens */
+.pitch .player.chosen{z-index:9}
+.pitch .player.chosen b{background:#ffda32!important;color:#1b1b1b!important;outline:3px solid #111!important;box-shadow:0 0 0 6px #ffda3277!important}
+.pitch .player.chosen span{outline:4px solid #ffda32!important}
+.pitch .player b{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
