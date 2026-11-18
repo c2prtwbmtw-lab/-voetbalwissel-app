@@ -5,7 +5,7 @@ const durationInfo=()=>DURATIONS[String(state.duration)]||DURATIONS['40'];
 const totalMinutes=()=>durationInfo().total;
 const nextBreak=(elapsed)=>{const d=durationInfo(),segment=d.minutes*60;return Math.floor(elapsed/segment+1)*segment;};
 const $=id=>document.getElementById(id);
-let state={match:1,elapsed:0,running:false,format:6,interval:5,duration:40,names:[...DEFAULT],sound:true,manualBench:[],startingKeeper:null,fieldOrder:[],history:{},halftime:false,scores:{},defenders:null};
+let state={match:1,elapsed:0,running:false,format:6,interval:5,duration:40,names:[...DEFAULT],sound:true,manualBench:[],startingKeeper:null,fieldOrder:[],history:{},halftime:false,scores:{},defenders:null,keeperMode:'rotate',fixedKeeper:null};
 try{const old=JSON.parse(localStorage.getItem(KEY)||'null');if(old)state={...state,...old,running:false};else{const prev=JSON.parse(localStorage.getItem('voetbalwissel-v4')||localStorage.getItem('voetbalwissel-v3')||localStorage.getItem('voetbalwissel-v1')||'null');if(prev){state={...state,...prev,running:false,halftime:false};}}}catch(e){}
 const save=()=>localStorage.setItem(KEY,JSON.stringify({...state,running:false}));
 if(!state.scores||typeof state.scores!=='object')state.scores={};
@@ -21,7 +21,7 @@ const currentSlot=()=>Math.min(slots()-1,Math.floor(state.elapsed/(state.interva
 const name=i=>state.names[i]||`Speler ${i+1}`;
 const time=t=>`${String(Math.floor(t/60)).padStart(2,'0')}:${String(t%60).padStart(2,'0')}`;
 // Versioned schedules prevent old, uneven cached rotations from being reused.
-const scheduleKey=()=>['balanced-v5-roles',state.match,state.format,state.interval,state.duration,state.names.join('|'),state.manualBench.join(','),state.startingKeeper,state.fieldOrder.join(','),defenders().join(',')].join(':');
+const scheduleKey=()=>['balanced-v5-roles',state.match,state.format,state.interval,state.duration,state.names.join('|'),state.manualBench.join(','),state.startingKeeper,state.fieldOrder.join(','),defenders().join(','),state.keeperMode,state.fixedKeeper].join(':');
 function build(){
  const n=count(),bs=n-state.format,arr=[],played=Array(n).fill(0),lastBench=Array(n).fill(-99),def=new Set(defenders());
  // Start with the first-match lineup, but move the opening substitutes on by
@@ -38,9 +38,11 @@ function build(){
  const keeperBase=firstKeeper()??0;
  const keeperOrder=Array.from({length:n},(_,i)=>(keeperBase+i)%n);
  const keeperOffset=(state.match-1)*Math.ceil(totalMinutes()/10);
+ const fixedMode=state.format!==6&&state.keeperMode==='fixed';
+ const chosenKeeper=Number.isInteger(state.fixedKeeper)&&state.fixedKeeper>=0&&state.fixedKeeper<n?state.fixedKeeper:(firstKeeper()??0);
  for(let i=0;i<slots();i++){
   const minute=i*state.interval,weight=Math.min(state.interval,totalMinutes()-minute);
-  const keeper=keeperOrder[(keeperOffset+Math.floor(minute/10))%n];
+  const keeper=fixedMode?chosenKeeper:keeperOrder[(keeperOffset+Math.floor(minute/10))%n];
   let bench=[];
   if(bs>0){
    const candidates=rotation.filter(j=>j!==keeper);
@@ -87,7 +89,29 @@ function build(){
 function schedule(){const k=scheduleKey();if(!state.history[k]){state.history={};state.history[k]=build();}return state.history[k];}
 function beep(){if(!state.sound)return;try{const C=window.AudioContext||window.webkitAudioContext;const ctx=new C(),o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=880;g.gain.value=.13;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.3);setTimeout(()=>ctx.close(),500);}catch(e){}navigator.vibrate?.([180,100,180]);}
 function notify(msg){$('notice').textContent=msg;$('notice').classList.add('show');setTimeout(()=>$('notice').classList.remove('show'),4000);beep();}
-function positions(){const f=state.format;if(f===6)return [{x:50,y:87,r:'K'},{x:17,y:65,r:'V'},{x:50,y:65,r:'V'},{x:83,y:65,r:'V'},{x:33,y:29,r:'A'},{x:67,y:29,r:'A'}];if(f===8)return [{x:50,y:89,r:'K'},{x:18,y:70,r:'V'},{x:50,y:72,r:'V'},{x:82,y:70,r:'V'},{x:30,y:48,r:'M'},{x:70,y:48,r:'M'},{x:32,y:24,r:'A'},{x:68,y:24,r:'A'}];return [{x:50,y:91,r:'K'},{x:12,y:73,r:'V'},{x:37,y:77,r:'V'},{x:63,y:77,r:'V'},{x:88,y:73,r:'V'},{x:25,y:51,r:'M'},{x:50,y:55,r:'M'},{x:75,y:51,r:'M'},{x:18,y:25,r:'A'},{x:50,y:20,r:'A'},{x:82,y:25,r:'A'}];}
+function defaultPositions(){const f=state.format;if(f===6)return [{x:50,y:87,r:'K'},{x:17,y:65,r:'V'},{x:50,y:65,r:'V'},{x:83,y:65,r:'V'},{x:33,y:29,r:'A'},{x:67,y:29,r:'A'}];if(f===8)return [{x:50,y:89,r:'K'},{x:18,y:70,r:'V'},{x:50,y:72,r:'V'},{x:82,y:70,r:'V'},{x:30,y:48,r:'M'},{x:70,y:48,r:'M'},{x:32,y:24,r:'A'},{x:68,y:24,r:'A'}];return [{x:50,y:91,r:'K'},{x:12,y:73,r:'V'},{x:37,y:77,r:'V'},{x:63,y:77,r:'V'},{x:88,y:73,r:'V'},{x:25,y:51,r:'M'},{x:50,y:55,r:'M'},{x:75,y:51,r:'M'},{x:18,y:25,r:'A'},{x:50,y:20,r:'A'},{x:82,y:25,r:'A'}];}
+// Formation coordinates are separate from the match history and survive updates.
+const FORMATION_KEY='coaches-formation-v27';
+let customFormations={};
+try{customFormations=JSON.parse(localStorage.getItem(FORMATION_KEY)||'{}')||{};}catch(e){}
+function positions(){
+ const base=defaultPositions(),saved=customFormations[String(state.format)];
+ return base.map((p,i)=>saved&&saved[i]&&Number.isFinite(saved[i].x)&&Number.isFinite(saved[i].y)?{...p,x:saved[i].x,y:saved[i].y}:p);
+}
+function setPosition(index,x,y){
+ const key=String(state.format),list=positions().map(v=>({x:v.x,y:v.y}));
+ list[index]={x:Math.max(9,Math.min(91,x)),y:Math.max(8,Math.min(92,y))};
+ customFormations[key]=list;localStorage.setItem(FORMATION_KEY,JSON.stringify(customFormations));
+ render();
+}
+function renderKeeperMode(){
+ const wrap=$('keeperModeSettings');wrap.hidden=state.format===6;
+ $('keeperMode').value=state.keeperMode==='fixed'?'fixed':'rotate';
+ $('fixedKeeperLabel').hidden=state.keeperMode!=='fixed';
+ const sel=$('fixedKeeper'),value=String(state.fixedKeeper??firstKeeper()??0);
+ sel.innerHTML='';state.names.forEach((nm,i)=>{const o=document.createElement('option');o.value=i;o.textContent=nm;sel.appendChild(o);});
+ sel.value=value;
+}
 function render(){
  const rows=schedule(),s=rows[currentSlot()];
  $('matchNumber').textContent=state.match;
@@ -101,14 +125,17 @@ function render(){
  $('slots').innerHTML=rows.map((r,i)=>`<button class="slot ${i===currentSlot()?'selected':''}" data-slot="${i}">${i*state.interval}–${Math.min(totalMinutes(),(i+1)*state.interval)}</button>`).join('');
  $('tableBody').innerHTML=rows.map((r,i)=>`<tr class="${i===currentSlot()?'active':''}" data-slot="${i}"><td>${i*state.interval}–${Math.min(totalMinutes(),(i+1)*state.interval)}</td><td>${name(r.keeper)}</td><td>${r.bench.map(name).join(' · ')||'—'} <button type="button" class="edit-slot" data-edit="${i}" aria-label="Wijzig tijdvak ${i+1}">✎ Wijzig</button></td></tr>`).join('');
  $('prevMatch').disabled=state.match===1;$('sound').checked=state.sound;$('format').value=String(state.format);$('interval').value=String(state.interval);
- $('duration').value=String(state.duration);renderBenchPicker();renderDefenderPicker();
+ $('duration').value=String(state.duration);renderBenchPicker();renderDefenderPicker();renderKeeperMode();
  $('playerCount').textContent=`${count()} spelers (minimaal ${state.format}, maximaal ${state.format+6})`;
- $('summary').textContent=`${durationInfo().label}: ${durationInfo().periods} × ${durationInfo().minutes} minuten (${totalMinutes()} minuten), met rust tussen de periodes. Precies ${state.format} spelers op het veld, inclusief keeper. Keeper om de 10 minuten; veldspelers om de ${state.interval} minuten.`;
+ $('summary').textContent=`${durationInfo().label}: ${durationInfo().periods} × ${durationInfo().minutes} minuten (${totalMinutes()} minuten), met rust tussen de periodes. Precies ${state.format} spelers op het veld, inclusief keeper. ${state.format!==6&&state.keeperMode==='fixed'?'Vaste keeper voor de hele wedstrijd':'Keeper om de 10 minuten'}; veldspelers om de ${state.interval} minuten.`;
 }
 function isBreakPoint(t){const d=durationInfo(),segment=d.minutes*60;return t>0&&t<totalMinutes()*60&&t%segment===0;}
 function resetClock(){state.elapsed=0;state.running=false;state.halftime=false;save();render();}
 function adjustFormat(f){state.format=f;state.names=state.names.slice(0,f+6);while(state.names.length<f)state.names.push(`Speler ${state.names.length+1}`);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.defenders=null;state.history={};resetClock();}
 $('format').addEventListener('change',e=>adjustFormat(Number(e.target.value)));
+$('keeperMode').addEventListener('change',e=>{state.keeperMode=e.target.value;state.fixedKeeper=Number($('fixedKeeper').value);state.history={};save();render();});
+$('fixedKeeper').addEventListener('change',e=>{state.fixedKeeper=Number(e.target.value);state.history={};save();render();});
+$('resetFormation').addEventListener('click',()=>{delete customFormations[String(state.format)];localStorage.setItem(FORMATION_KEY,JSON.stringify(customFormations));render();});
 $('duration').addEventListener('change',e=>{state.duration=e.target.value;state.history={};resetClock();});
 $('interval').addEventListener('change',e=>{const minutes=Number(e.target.value);if(!Number.isInteger(minutes)||minutes<5||minutes>40||minutes%5!==0)return;state.interval=minutes;state.history={};resetClock();});
 
@@ -201,17 +228,19 @@ $('applyLineup').addEventListener('click',()=>{
  // Zelf gekozen beginwissels zijn altijd toegestaan, ongeacht de spelersrollen.
  state.fieldOrder=[];state.history={};resetClock();
 });
-// Two taps exchange field positions; touch and mouse dragging also work.
-let selectedPosition=null,dragging=null;
+// Hold a player name for 3 seconds, then tap another name to exchange players.
+// Drag a player to move that formation position without changing the player name.
+let selectedPosition=null,dragging=null,holdTimer=null,suppressClick=false;
 function exchange(a,b){
  if(a===b){selectedPosition=null;render();return;}
  const rows=schedule(),slot=currentSlot(),current=rows[slot];
  const ids=[current.keeper,...current.field];
  if(!Number.isInteger(a)||!Number.isInteger(b)||a<0||b<0||a>=ids.length||b>=ids.length)return;
+ if(state.format!==6&&state.keeperMode==='fixed'&&(a===0||b===0)){
+  notify('Bij een vaste keeper kun je de keeper niet omwisselen.');selectedPosition=null;render();return;
+ }
  [ids[a],ids[b]]=[ids[b],ids[a]];
  current.keeper=ids[0];current.field=ids.slice(1);
- // Continue the chosen formation into following time slots without changing
- // the planned goalkeeper or bench for those slots.
  for(let i=slot+1;i<rows.length;i++){
   const prev=rows[i-1].field,r=rows[i],ordered=Array(r.field.length).fill(null);
   const incoming=r.field.filter(j=>!prev.includes(j));
@@ -220,33 +249,45 @@ function exchange(a,b){
   r.field=ordered;
  }
  if(slot===0){state.fieldOrder=[...current.field];state.startingKeeper=current.keeper;}
- // The starting-keeper/field-order fields affect the cache key. Save the
- // edited rows under the NEW key rather than rebuilding them.
- state.history={[scheduleKey()]:rows};
- selectedPosition=null;save();render();
+ state.history={[scheduleKey()]:rows};selectedPosition=null;save();render();
 }
-$('playersOnField').addEventListener('click',e=>{
- const el=e.target.closest('.player');if(!el||dragging?.moved)return;
- const pos=Number(el.dataset.pos);
- if(selectedPosition===null){selectedPosition=pos;el.classList.add('chosen');}
- else {const a=selectedPosition;selectedPosition=null;exchange(a,pos);}
-});
+function cancelHold(){if(holdTimer!==null){clearTimeout(holdTimer);holdTimer=null;}}
 $('playersOnField').addEventListener('pointerdown',e=>{
  const el=e.target.closest('.player');if(!el)return;
- dragging={pos:Number(el.dataset.pos),x:e.clientX,y:e.clientY,moved:false};
+ cancelHold();
+ dragging={pos:Number(el.dataset.pos),x:e.clientX,y:e.clientY,moved:false,held:false,id:e.pointerId};
+ if(e.target.closest('b')){
+  holdTimer=setTimeout(()=>{
+   if(!dragging||dragging.moved)return;
+   dragging.held=true;selectedPosition=dragging.pos;
+   el.classList.add('chosen');navigator.vibrate?.(90);
+   $('formationHint').textContent='Speler geselecteerd! Tik op de naam van de speler waarmee je wilt wisselen.';
+  },3000);
+ }
+});
+$('playersOnField').addEventListener('pointermove',e=>{
+ if(!dragging||dragging.id!==e.pointerId)return;
+ if(Math.hypot(e.clientX-dragging.x,e.clientY-dragging.y)>12){dragging.moved=true;cancelHold();}
 });
 $('playersOnField').addEventListener('pointerup',e=>{
- if(!dragging)return;
- const d=dragging;const dx=e.clientX-d.x,dy=e.clientY-d.y;
- if(Math.hypot(dx,dy)>18){d.moved=true;
-  const rect=$('pitch').getBoundingClientRect(),x=(e.clientX-rect.left)/rect.width*100,y=(e.clientY-rect.top)/rect.height*100;
-  const positionsList=positions();let best=-1,dist=Infinity;
-  positionsList.forEach((p,i)=>{const v=(p.x-x)**2+(p.y-y)**2;if(v<dist){dist=v;best=i;}});
-  exchange(d.pos,best);selectedPosition=null;
-  setTimeout(()=>{dragging=null;},0);
- }else dragging=null;
+ if(!dragging||dragging.id!==e.pointerId)return;
+ const d=dragging;cancelHold();dragging=null;
+ if(d.moved){
+  const rect=$('pitch').getBoundingClientRect();
+  setPosition(d.pos,(e.clientX-rect.left)/rect.width*100,(e.clientY-rect.top)/rect.height*100);
+  suppressClick=true;setTimeout(()=>suppressClick=false,300);return;
+ }
+ if(d.held){suppressClick=true;setTimeout(()=>suppressClick=false,300);return;}
 });
-$('playersOnField').addEventListener('pointercancel',()=>{dragging=null;});
+$('playersOnField').addEventListener('pointercancel',()=>{cancelHold();dragging=null;});
+$('playersOnField').addEventListener('click',e=>{
+ if(suppressClick||selectedPosition===null)return;
+ const el=e.target.closest('.player');if(!el||!e.target.closest('b'))return;
+ const pos=Number(el.dataset.pos);
+ if(pos===selectedPosition){selectedPosition=null;render();return;}
+ exchange(selectedPosition,pos);
+ $('formationHint').textContent='Sleep spelers om de opstelling te veranderen. Houd een naam 3 seconden ingedrukt en tik daarna op een andere naam om te wisselen.';
+});
 
 let lastTick=Date.now();setInterval(()=>{
  const now=Date.now();
@@ -262,7 +303,7 @@ let lastTick=Date.now();setInterval(()=>{
     const period=Math.round(state.elapsed/(durationInfo().minutes*60));
     notify(`Rust! Periode ${period} afgelopen.`);
    }else if(state.elapsed>=finish){state.running=false;notify('Einde wedstrijd!');}
-   else if(crossed)notify(state.elapsed%600===0?'Wissel spelers én keeper!':'Tijd om te wisselen!');
+   else if(crossed)notify(state.elapsed%600===0&&!(state.format!==6&&state.keeperMode==='fixed')?'Wissel spelers én keeper!':'Tijd om te wisselen!');
    save();render();
   }
  }
