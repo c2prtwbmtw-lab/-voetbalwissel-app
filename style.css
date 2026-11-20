@@ -102,3 +102,10 @@ tr.active{background:var(--club-tint)}
 .pitch .player.chosen b{background:#ffda32!important;color:#1b1b1b!important;outline:3px solid #111!important;box-shadow:0 0 0 6px #ffda3277!important}
 .pitch .player.chosen span{outline:4px solid #ffda32!important}
 .pitch .player b{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+
+/* V29: saved formations list */
+.formation-save{margin:12px 8px 8px 0}
+.saved-lineup-entry{border-bottom:1px solid #e7e7e7;padding:15px 0;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.saved-lineup-entry strong,.saved-lineup-entry small{display:block;margin-bottom:5px}
+.saved-lineup-actions{display:flex;gap:7px;align-items:center}
+.saved-lineup-actions button{padding:10px 12px}

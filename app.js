@@ -359,6 +359,8 @@ function openArchiveDetail(index){
 function showScreen(screen){
  $('mainView').hidden=screen!=='home';
  $('historyView').hidden=screen!=='history';
+ $('savedLineupsView').hidden=screen!=='savedLineups';
+ if(screen==='savedLineups')renderSavedLineups();
  if(screen==='history')renderArchive();
  $('mainMenu').hidden=true;$('menuToggle').setAttribute('aria-expanded','false');
  window.scrollTo(0,0);
@@ -374,3 +376,79 @@ $('archiveMatch').addEventListener('click',archiveMatch);
 $('historyList').addEventListener('click',e=>{
  const b=e.target.closest('[data-archive]');if(b)openArchiveDetail(Number(b.dataset.archive));
 });
+
+
+// V29: independently stored reusable lineup snapshots; no changes to match archive.
+const SAVED_LINEUPS_KEY='coaches-saved-lineups-v1';
+function readSavedLineups(){
+ try{const v=JSON.parse(localStorage.getItem(SAVED_LINEUPS_KEY)||'[]');return Array.isArray(v)?v:[];}
+ catch(e){return [];}
+}
+function writeSavedLineups(list){
+ try{localStorage.setItem(SAVED_LINEUPS_KEY,JSON.stringify(list));return true;}
+ catch(e){alert('Opslaan mislukt. Controleer de opslagruimte op dit toestel.');return false;}
+}
+function saveCurrentLineup(){
+ if(state.running){alert('Pauzeer eerst de wedstrijd voordat je een opstelling opslaat.');return;}
+ const rows=schedule();const active=rows[currentSlot()];
+ const suggested=`${state.format} tegen ${state.format} · ${new Date().toLocaleDateString('nl-NL')}`;
+ const label=prompt('Naam voor deze opstelling:',suggested);
+ if(label===null)return;
+ const title=label.trim().slice(0,80)||suggested;
+ const snapshot={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),title,date:new Date().toISOString(),
+  format:state.format,interval:state.interval,duration:state.duration,names:[...state.names],
+  defenders:Array.isArray(state.defenders)?[...state.defenders]:null,
+  keeperMode:state.keeperMode,fixedKeeper:state.fixedKeeper,
+  startingKeeper:state.startingKeeper,manualBench:[...state.manualBench],fieldOrder:[...state.fieldOrder],
+  match:state.match,slot:currentSlot(),
+  rows:rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]})),
+  coords:positions().map(p=>({x:p.x,y:p.y}))};
+ const list=readSavedLineups();list.unshift(snapshot);
+ if(writeSavedLineups(list))notify('Opstelling opgeslagen onder ☰ Menu');
+}
+function renderSavedLineups(){
+ const list=readSavedLineups(),target=$('savedLineupsList');target.replaceChildren();
+ if(!list.length){const p=document.createElement('p');p.className='hint';p.textContent='Nog geen opstellingen opgeslagen. Gebruik de knop Opstelling opslaan boven het veld.';target.append(p);return;}
+ list.forEach(item=>{
+  const wrap=document.createElement('div');wrap.className='saved-lineup-entry';
+  const info=document.createElement('div');
+  const nameEl=document.createElement('strong');nameEl.textContent=item.title||'Opstelling';
+  const details=document.createElement('small');details.textContent=`${new Date(item.date).toLocaleString('nl-NL',{dateStyle:'medium',timeStyle:'short'})} · ${item.format} tegen ${item.format} · ${item.names?.length||'?'} spelers`;
+  info.append(nameEl,details);
+  const actions=document.createElement('div');actions.className='saved-lineup-actions';
+  const open=document.createElement('button');open.textContent='Openen';open.addEventListener('click',()=>openSavedLineup(item));
+  const del=document.createElement('button');del.className='secondary';del.textContent='Verwijderen';del.addEventListener('click',()=>{
+   if(!confirm(`Opstelling "${item.title}" verwijderen?`))return;
+   if(writeSavedLineups(readSavedLineups().filter(v=>v.id!==item.id)))renderSavedLineups();
+  });
+  actions.append(open,del);wrap.append(info,actions);target.append(wrap);
+ });
+}
+function openSavedLineup(item){
+ if(state.running){alert('Pauzeer eerst de wedstrijd voordat je een opstelling opent.');return;}
+ if(!Array.isArray(item.names)||!Array.isArray(item.rows)||![6,8,11].includes(item.format)){
+  alert('Deze opstelling kan niet worden geopend.');return;
+ }
+ if(!confirm(`Opstelling "${item.title}" openen? De huidige niet-opgeslagen opstelling wordt vervangen. Je wedstrijdhistorie blijft bewaard.`))return;
+ const backup=JSON.parse(JSON.stringify(state));
+ try{
+  state.format=item.format;state.interval=item.interval;state.duration=item.duration;
+  state.names=[...item.names];state.defenders=Array.isArray(item.defenders)?[...item.defenders]:null;
+  state.keeperMode=item.keeperMode||'rotate';state.fixedKeeper=item.fixedKeeper??null;
+  state.startingKeeper=item.startingKeeper??null;
+  state.manualBench=[...(item.manualBench||[])];state.fieldOrder=[...(item.fieldOrder||[])];
+  // Start at the beginning of the loaded lineup; do not overwrite scores or match archive.
+  state.elapsed=0;state.running=false;state.halftime=false;
+  const rows=item.rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}));
+  // Reuse the stored schedule for this match under its new key.
+  state.history={[scheduleKey()]:rows};
+  if(Array.isArray(item.coords)&&item.coords.length===item.format){
+   customFormations[String(item.format)]=item.coords.map(p=>({x:p.x,y:p.y}));
+   localStorage.setItem(FORMATION_KEY,JSON.stringify(customFormations));
+  }
+  save();showScreen('home');render();notify('Opstelling geopend');
+ }catch(e){state=backup;save();alert('Opstelling openen mislukt. De vorige instellingen zijn hersteld.');}
+}
+$('saveCurrentLineup').addEventListener('click',saveCurrentLineup);
+$('menuSavedLineups').addEventListener('click',()=>showScreen('savedLineups'));
+$('savedLineupsBack').addEventListener('click',()=>showScreen('home'));
