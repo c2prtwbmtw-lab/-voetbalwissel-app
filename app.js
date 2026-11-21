@@ -6,8 +6,8 @@ const totalMinutes=()=>durationInfo().total;
 const nextBreak=(elapsed)=>{const d=durationInfo(),segment=d.minutes*60;return Math.floor(elapsed/segment+1)*segment;};
 const $=id=>document.getElementById(id);
 let state={match:1,elapsed:0,running:false,format:6,interval:5,duration:40,names:[...DEFAULT],sound:true,manualBench:[],startingKeeper:null,fieldOrder:[],history:{},halftime:false,scores:{},defenders:null,keeperMode:'rotate',fixedKeeper:null};
-try{const old=JSON.parse(localStorage.getItem(KEY)||'null');if(old)state={...state,...old,running:false};else{const prev=JSON.parse(localStorage.getItem('voetbalwissel-v4')||localStorage.getItem('voetbalwissel-v3')||localStorage.getItem('voetbalwissel-v1')||'null');if(prev){state={...state,...prev,running:false,halftime:false};}}}catch(e){}
-const save=()=>localStorage.setItem(KEY,JSON.stringify({...state,running:false}));
+try{const old=JSON.parse(localStorage.getItem(KEY)||'null');if(old)state={...state,...old};else{const prev=JSON.parse(localStorage.getItem('voetbalwissel-v4')||localStorage.getItem('voetbalwissel-v3')||localStorage.getItem('voetbalwissel-v1')||'null');if(prev){state={...state,...prev,running:false,halftime:false};}}}catch(e){}
+const save=()=>localStorage.setItem(KEY,JSON.stringify(state));
 if(!state.scores||typeof state.scores!=='object')state.scores={};
 if(!Number.isInteger(Number(state.interval))||Number(state.interval)<5||Number(state.interval)>40||Number(state.interval)%5!==0)state.interval=5;else state.interval=Number(state.interval);
 const defenders=()=>Array.isArray(state.defenders)?state.defenders.filter(i=>Number.isInteger(i)&&i>=0&&i<count()):state.names.map((nm,i)=>/^(joe|johan|kyan|jan)$/i.test(nm.trim())?i:-1).filter(i=>i>=0);
@@ -173,7 +173,7 @@ function render(){
  $('summary').textContent=`${durationInfo().label}: ${durationInfo().periods} × ${durationInfo().minutes} minuten (${totalMinutes()} minuten), met rust tussen de periodes. Precies ${state.format} spelers op het veld, inclusief keeper. ${state.format!==6&&state.keeperMode==='fixed'?'Vaste keeper voor de hele wedstrijd':'Keeper om de 10 minuten'}; veldspelers om de ${state.interval} minuten.`;
 }
 function isBreakPoint(t){const d=durationInfo(),segment=d.minutes*60;return t>0&&t<totalMinutes()*60&&t%segment===0;}
-function resetClock(){state.elapsed=0;state.running=false;state.halftime=false;save();render();}
+function resetClock(){state.elapsed=0;state.running=false;state.halftime=false;state.runAnchor=null;save();render();}
 function adjustFormat(f){state.format=f;state.names=state.names.slice(0,f+6);while(state.names.length<f)state.names.push(`Speler ${state.names.length+1}`);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.defenders=null;state.history={};resetClock();}
 $('format').addEventListener('change',e=>adjustFormat(Number(e.target.value)));
 $('keeperMode').addEventListener('change',e=>{state.keeperMode=e.target.value;state.fixedKeeper=Number($('fixedKeeper').value);state.history={};save();render();});
@@ -213,8 +213,8 @@ $('saveSlotEditor').addEventListener('click',()=>{
  state.history[scheduleKey()]=schedule();
  $('slotEditor').hidden=true;editingSlot=null;save();render();
 });
-$('play').addEventListener('click',()=>{unlockAlarm();if(state.halftime){state.halftime=false;state.running=true;}else{if(state.elapsed>=totalMinutes()*60)state.elapsed=0;state.running=!state.running;}lastTick=Date.now();save();render();});
-$('secondHalf').addEventListener('click',()=>{unlockAlarm();state.halftime=false;state.running=true;lastTick=Date.now();save();render();});
+$('play').addEventListener('click',()=>{unlockAlarm();if(state.halftime){state.halftime=false;state.running=true;}else{if(state.elapsed>=totalMinutes()*60)state.elapsed=0;state.running=!state.running;}state.runAnchor=state.running?Date.now()-state.elapsed*1000:null;save();render();});
+$('secondHalf').addEventListener('click',()=>{unlockAlarm();state.halftime=false;state.running=true;state.runAnchor=Date.now()-state.elapsed*1000;save();render();});
 $('reset').addEventListener('click',()=>{if(confirm('Wedstrijdklok opnieuw beginnen?'))resetClock();});
 $('nextMatch').addEventListener('click',()=>{state.match++;resetClock();});$('prevMatch').addEventListener('click',()=>{if(state.match>1){state.match--;resetClock();}});
 function renderDefenderPicker(){
@@ -340,27 +340,30 @@ $('playersOnField').addEventListener('click',e=>{
  $('formationHint').textContent='Sleep spelers om de opstelling te veranderen. Houd een naam 3 seconden ingedrukt en tik daarna op een andere naam om te wisselen.';
 });
 
-let lastTick=Date.now();setInterval(()=>{
+// Use actual elapsed wall time, not a count of timer callbacks.
+// iOS may suspend callbacks when the screen locks; catch up on return.
+if(state.running && !Number.isFinite(state.runAnchor))state.runAnchor=Date.now()-state.elapsed*1000;
+function tickMatch(){
+ if(!state.running)return;
  const now=Date.now();
- if(state.running){
-  const delta=Math.floor((now-lastTick)/1000);
-  if(delta>0){
-   const before=state.elapsed,finish=totalMinutes()*60;
-   const boundary=nextBreak(before),target=Math.min(finish,before+delta);
-   state.elapsed=Math.min(target,boundary);
-   const crossed= Math.floor(before/(state.interval*60))<Math.floor(state.elapsed/(state.interval*60));
-   if(isBreakPoint(state.elapsed)){
-    state.running=false;state.halftime=true;
-    const period=Math.round(state.elapsed/(durationInfo().minutes*60));
-    notify(`🔔 RUST – Periode ${period} afgelopen!`,{alarm:true});
-   }else if(state.elapsed>=finish){state.running=false;notify('🏁 EINDE WEDSTRIJD!',{alarm:true,final:true});}
-   else if(crossed){ /* Geen alarm bij gewone spelerswissels, inclusief 5 minuten. */ }
-   save();render();
-  }
+ const before=state.elapsed, finish=totalMinutes()*60;
+ const boundary=nextBreak(before);
+ const actual=Math.max(before,Math.floor((now-state.runAnchor)/1000));
+ state.elapsed=Math.min(finish,boundary,actual);
+ if(isBreakPoint(state.elapsed)){
+  state.running=false;state.halftime=true;state.runAnchor=null;
+  const period=Math.round(state.elapsed/(durationInfo().minutes*60));
+  notify(`🔔 RUST – Periode ${period} afgelopen!`,{alarm:true});
+ }else if(state.elapsed>=finish){
+  state.running=false;state.runAnchor=null;
+  notify('🏁 EINDE WEDSTRIJD!',{alarm:true,final:true});
  }
- lastTick=state.running ? lastTick + Math.floor((now-lastTick)/1000)*1000 : now;
-},200);
-window.addEventListener('pagehide',()=>{state.running=false;save();});
+ if(state.elapsed!==before||!state.running){save();render();}
+}
+setInterval(tickMatch,250);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)tickMatch();});
+window.addEventListener('pageshow',tickMatch);
+window.addEventListener('pagehide',()=>{save();});
 render();
 
 
