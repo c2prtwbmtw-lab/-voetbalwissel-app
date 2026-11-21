@@ -88,37 +88,43 @@ function build(){
 }
 function schedule(){const k=scheduleKey();if(!state.history[k]){state.history={};state.history[k]=build();}return state.history[k];}
 // Unlock iOS Web Audio from an explicit user gesture before the clock starts.
+// iOS requires audio to be resumed by a user gesture. Keep one context alive.
 let alarmAudio=null;
-function unlockAlarm(){
- if(!state.sound)return;
+async function unlockAlarm(){
+ if(!state.sound)return false;
  try{
   const C=window.AudioContext||window.webkitAudioContext;
-  if(!C)return;
-  if(!alarmAudio)alarmAudio=new C();
-  if(alarmAudio.state==='suspended')alarmAudio.resume().catch(()=>{});
-  // A silent oscillator helps initialize the audio pipeline on iOS.
-  const o=alarmAudio.createOscillator(),g=alarmAudio.createGain();
-  g.gain.value=0;o.connect(g);g.connect(alarmAudio.destination);
-  o.start();o.stop(alarmAudio.currentTime+0.01);
- }catch(e){}
+  if(!C)return false;
+  if(!alarmAudio||alarmAudio.state==='closed')alarmAudio=new C();
+  if(alarmAudio.state!=='running')await alarmAudio.resume();
+  return alarmAudio.state==='running';
+ }catch(e){return false;}
+}
+function playAlarmTones(final=false){
+ if(!state.sound||!alarmAudio||alarmAudio.state!=='running')return false;
+ try{
+  const start=alarmAudio.currentTime+0.06;
+  const notes=final?[660,660,880,1046]:[880,880,880];
+  notes.forEach((hz,i)=>{
+   const at=start+i*0.48;
+   const osc=alarmAudio.createOscillator(),gain=alarmAudio.createGain();
+   osc.type='square';osc.frequency.setValueAtTime(hz,at);
+   gain.gain.setValueAtTime(0.0001,at);
+   gain.gain.exponentialRampToValueAtTime(0.28,at+0.025);
+   gain.gain.setValueAtTime(0.28,at+0.30);
+   gain.gain.exponentialRampToValueAtTime(0.0001,at+0.39);
+   osc.connect(gain);gain.connect(alarmAudio.destination);
+   osc.start(at);osc.stop(at+0.40);
+  });
+  return true;
+ }catch(e){return false;}
 }
 function alarmSignal(final=false){
  if(!state.sound)return;
- try{
-  if(!alarmAudio)return;
-  if(alarmAudio.state==='suspended')alarmAudio.resume().catch(()=>{});
-  const t=alarmAudio.currentTime+0.03;
-  const notes=final?[660,660,880,1046]:[880,880,880];
-  notes.forEach((hz,i)=>{
-   const o=alarmAudio.createOscillator(),g=alarmAudio.createGain(),at=t+i*0.38;
-   o.type='square';o.frequency.setValueAtTime(hz,at);
-   g.gain.setValueAtTime(0.0001,at);
-   g.gain.exponentialRampToValueAtTime(0.23,at+0.025);
-   g.gain.setValueAtTime(0.23,at+0.25);
-   g.gain.exponentialRampToValueAtTime(0.0001,at+0.32);
-   o.connect(g);g.connect(alarmAudio.destination);o.start(at);o.stop(at+0.34);
-  });
- }catch(e){}
+ if(!playAlarmTones(final)){
+  // When the page has been suspended, resuming may not be permitted without a tap.
+  unlockAlarm().then(ok=>{if(ok)playAlarmTones(final);});
+ }
  navigator.vibrate?.(final?[300,150,300,150,500]:[250,100,250,100,250]);
 }
 function notify(msg,{alarm=false,final=false}={}){
@@ -233,7 +239,14 @@ $('homeMinus').addEventListener('click',()=>changeScore('home',-1));
 $('awayPlus').addEventListener('click',()=>changeScore('away',1));
 $('awayMinus').addEventListener('click',()=>changeScore('away',-1));
 $('sound').addEventListener('change',e=>{state.sound=e.target.checked;save();if(state.sound)unlockAlarm();});
-$('testAlarm').addEventListener('click',()=>{unlockAlarm();notify('🔔 Test alarm: drie pieptonen',{alarm:true});});
+$('testAlarm').addEventListener('click',async()=>{
+ if(!state.sound){alert('Zet eerst Wisselsignaal aan onder Instellingen.');return;}
+ const ready=await unlockAlarm();
+ if(!ready){alert('Geluid kon niet worden gestart. Controleer het volume en probeer opnieuw.');return;}
+ const played=playAlarmTones(false);
+ $('notice').textContent=played?'🔔 Testalarm wordt afgespeeld':'Audio kon niet worden afgespeeld';
+ $('notice').classList.add('show');setTimeout(()=>$('notice').classList.remove('show'),4000);
+});
 $('copy').addEventListener('click',async()=>{const txt=`Wedstrijd ${state.match} · ${state.format} tegen ${state.format} · ${durationInfo().periods} × ${durationInfo().minutes} minuten\n`+schedule().map((s,i)=>`${i*state.interval}-${Math.min(totalMinutes(),(i+1)*state.interval)} | Keeper: ${name(s.keeper)} | Veld: ${s.field.map(name).join(', ')} | Bank: ${s.bench.map(name).join(', ')}`).join('\n');try{await navigator.clipboard.writeText(txt);notify('Schema gekopieerd');}catch(e){prompt('Kopieer schema',txt);}});
 
 function renderBenchPicker(){
