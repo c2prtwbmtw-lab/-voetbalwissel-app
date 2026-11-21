@@ -109,3 +109,6 @@ tr.active{background:var(--club-tint)}
 .saved-lineup-entry strong,.saved-lineup-entry small{display:block;margin-bottom:5px}
 .saved-lineup-actions{display:flex;gap:7px;align-items:center}
 .saved-lineup-actions button{padding:10px 12px}
+
+/* V30: alarm test control */
+.test-alarm{display:block;margin-top:12px;min-width:160px}

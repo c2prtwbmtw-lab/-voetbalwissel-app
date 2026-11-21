@@ -87,8 +87,45 @@ function build(){
  return arr;
 }
 function schedule(){const k=scheduleKey();if(!state.history[k]){state.history={};state.history[k]=build();}return state.history[k];}
-function beep(){if(!state.sound)return;try{const C=window.AudioContext||window.webkitAudioContext;const ctx=new C(),o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=880;g.gain.value=.13;o.connect(g);g.connect(ctx.destination);o.start();o.stop(ctx.currentTime+.3);setTimeout(()=>ctx.close(),500);}catch(e){}navigator.vibrate?.([180,100,180]);}
-function notify(msg){$('notice').textContent=msg;$('notice').classList.add('show');setTimeout(()=>$('notice').classList.remove('show'),4000);beep();}
+// Unlock iOS Web Audio from an explicit user gesture before the clock starts.
+let alarmAudio=null;
+function unlockAlarm(){
+ if(!state.sound)return;
+ try{
+  const C=window.AudioContext||window.webkitAudioContext;
+  if(!C)return;
+  if(!alarmAudio)alarmAudio=new C();
+  if(alarmAudio.state==='suspended')alarmAudio.resume().catch(()=>{});
+  // A silent oscillator helps initialize the audio pipeline on iOS.
+  const o=alarmAudio.createOscillator(),g=alarmAudio.createGain();
+  g.gain.value=0;o.connect(g);g.connect(alarmAudio.destination);
+  o.start();o.stop(alarmAudio.currentTime+0.01);
+ }catch(e){}
+}
+function alarmSignal(final=false){
+ if(!state.sound)return;
+ try{
+  if(!alarmAudio)return;
+  if(alarmAudio.state==='suspended')alarmAudio.resume().catch(()=>{});
+  const t=alarmAudio.currentTime+0.03;
+  const notes=final?[660,660,880,1046]:[880,880,880];
+  notes.forEach((hz,i)=>{
+   const o=alarmAudio.createOscillator(),g=alarmAudio.createGain(),at=t+i*0.38;
+   o.type='square';o.frequency.setValueAtTime(hz,at);
+   g.gain.setValueAtTime(0.0001,at);
+   g.gain.exponentialRampToValueAtTime(0.23,at+0.025);
+   g.gain.setValueAtTime(0.23,at+0.25);
+   g.gain.exponentialRampToValueAtTime(0.0001,at+0.32);
+   o.connect(g);g.connect(alarmAudio.destination);o.start(at);o.stop(at+0.34);
+  });
+ }catch(e){}
+ navigator.vibrate?.(final?[300,150,300,150,500]:[250,100,250,100,250]);
+}
+function notify(msg,{alarm=false,final=false}={}){
+ $('notice').textContent=msg;$('notice').classList.add('show');
+ setTimeout(()=>$('notice').classList.remove('show'),alarm?7000:4000);
+ if(alarm)alarmSignal(final);
+}
 function defaultPositions(){const f=state.format;if(f===6)return [{x:50,y:87,r:'K'},{x:17,y:65,r:'V'},{x:50,y:65,r:'V'},{x:83,y:65,r:'V'},{x:33,y:29,r:'A'},{x:67,y:29,r:'A'}];if(f===8)return [{x:50,y:89,r:'K'},{x:18,y:70,r:'V'},{x:50,y:72,r:'V'},{x:82,y:70,r:'V'},{x:30,y:48,r:'M'},{x:70,y:48,r:'M'},{x:32,y:24,r:'A'},{x:68,y:24,r:'A'}];return [{x:50,y:91,r:'K'},{x:12,y:73,r:'V'},{x:37,y:77,r:'V'},{x:63,y:77,r:'V'},{x:88,y:73,r:'V'},{x:25,y:51,r:'M'},{x:50,y:55,r:'M'},{x:75,y:51,r:'M'},{x:18,y:25,r:'A'},{x:50,y:20,r:'A'},{x:82,y:25,r:'A'}];}
 // Formation coordinates are separate from the match history and survive updates.
 const FORMATION_KEY='coaches-formation-v27';
@@ -170,8 +207,8 @@ $('saveSlotEditor').addEventListener('click',()=>{
  state.history[scheduleKey()]=schedule();
  $('slotEditor').hidden=true;editingSlot=null;save();render();
 });
-$('play').addEventListener('click',()=>{if(state.halftime){state.halftime=false;state.running=true;}else{if(state.elapsed>=totalMinutes()*60)state.elapsed=0;state.running=!state.running;}lastTick=Date.now();save();render();});
-$('secondHalf').addEventListener('click',()=>{state.halftime=false;state.running=true;lastTick=Date.now();save();render();});
+$('play').addEventListener('click',()=>{unlockAlarm();if(state.halftime){state.halftime=false;state.running=true;}else{if(state.elapsed>=totalMinutes()*60)state.elapsed=0;state.running=!state.running;}lastTick=Date.now();save();render();});
+$('secondHalf').addEventListener('click',()=>{unlockAlarm();state.halftime=false;state.running=true;lastTick=Date.now();save();render();});
 $('reset').addEventListener('click',()=>{if(confirm('Wedstrijdklok opnieuw beginnen?'))resetClock();});
 $('nextMatch').addEventListener('click',()=>{state.match++;resetClock();});$('prevMatch').addEventListener('click',()=>{if(state.match>1){state.match--;resetClock();}});
 function renderDefenderPicker(){
@@ -195,7 +232,8 @@ $('homePlus').addEventListener('click',()=>changeScore('home',1));
 $('homeMinus').addEventListener('click',()=>changeScore('home',-1));
 $('awayPlus').addEventListener('click',()=>changeScore('away',1));
 $('awayMinus').addEventListener('click',()=>changeScore('away',-1));
-$('sound').addEventListener('change',e=>{state.sound=e.target.checked;save();});
+$('sound').addEventListener('change',e=>{state.sound=e.target.checked;save();if(state.sound)unlockAlarm();});
+$('testAlarm').addEventListener('click',()=>{unlockAlarm();notify('🔔 Test alarm: drie pieptonen',{alarm:true});});
 $('copy').addEventListener('click',async()=>{const txt=`Wedstrijd ${state.match} · ${state.format} tegen ${state.format} · ${durationInfo().periods} × ${durationInfo().minutes} minuten\n`+schedule().map((s,i)=>`${i*state.interval}-${Math.min(totalMinutes(),(i+1)*state.interval)} | Keeper: ${name(s.keeper)} | Veld: ${s.field.map(name).join(', ')} | Bank: ${s.bench.map(name).join(', ')}`).join('\n');try{await navigator.clipboard.writeText(txt);notify('Schema gekopieerd');}catch(e){prompt('Kopieer schema',txt);}});
 
 function renderBenchPicker(){
@@ -301,9 +339,9 @@ let lastTick=Date.now();setInterval(()=>{
    if(isBreakPoint(state.elapsed)){
     state.running=false;state.halftime=true;
     const period=Math.round(state.elapsed/(durationInfo().minutes*60));
-    notify(`Rust! Periode ${period} afgelopen.`);
-   }else if(state.elapsed>=finish){state.running=false;notify('Einde wedstrijd!');}
-   else if(crossed)notify(state.elapsed%600===0&&!(state.format!==6&&state.keeperMode==='fixed')?'Wissel spelers én keeper!':'Tijd om te wisselen!');
+    notify(`🔔 RUST – Periode ${period} afgelopen!`,{alarm:true});
+   }else if(state.elapsed>=finish){state.running=false;notify('🏁 EINDE WEDSTRIJD!',{alarm:true,final:true});}
+   else if(crossed){ /* Geen alarm bij gewone spelerswissels, inclusief 5 minuten. */ }
    save();render();
   }
  }
