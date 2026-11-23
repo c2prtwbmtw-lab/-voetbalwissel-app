@@ -86,7 +86,13 @@ function build(){
  }
  return arr;
 }
-function schedule(){const k=scheduleKey();if(!state.history[k]){state.history={};state.history[k]=build();}return state.history[k];}
+function schedule(){
+ const k=scheduleKey();
+ // An imported/saved lineup is authoritative. Never silently recalculate it.
+ if(state.exactLineup && state.exactLineup.key===k && Array.isArray(state.exactLineup.rows))return state.exactLineup.rows;
+ if(!state.history[k]){state.history={};state.exactLineup=null;state.history[k]=build();}
+ return state.history[k];
+}
 // Unlock iOS Web Audio from an explicit user gesture before the clock starts.
 // iOS requires audio to be resumed by a user gesture. Keep one context alive.
 let alarmAudio=null;
@@ -174,21 +180,21 @@ function render(){
 }
 function isBreakPoint(t){const d=durationInfo(),segment=d.minutes*60;return t>0&&t<totalMinutes()*60&&t%segment===0;}
 function resetClock(){state.elapsed=0;state.running=false;state.halftime=false;state.runAnchor=null;save();render();}
-function adjustFormat(f){state.format=f;state.names=state.names.slice(0,f+6);while(state.names.length<f)state.names.push(`Speler ${state.names.length+1}`);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.defenders=null;state.history={};resetClock();}
+function adjustFormat(f){state.format=f;state.names=state.names.slice(0,f+6);while(state.names.length<f)state.names.push(`Speler ${state.names.length+1}`);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.defenders=null;state.history={};state.exactLineup=null;resetClock();}
 $('format').addEventListener('change',e=>adjustFormat(Number(e.target.value)));
-$('keeperMode').addEventListener('change',e=>{state.keeperMode=e.target.value;state.fixedKeeper=Number($('fixedKeeper').value);state.history={};save();render();});
-$('fixedKeeper').addEventListener('change',e=>{state.fixedKeeper=Number(e.target.value);state.history={};save();render();});
+$('keeperMode').addEventListener('change',e=>{state.keeperMode=e.target.value;state.fixedKeeper=Number($('fixedKeeper').value);state.history={};state.exactLineup=null;save();render();});
+$('fixedKeeper').addEventListener('change',e=>{state.fixedKeeper=Number(e.target.value);state.history={};state.exactLineup=null;save();render();});
 $('resetFormation').addEventListener('click',()=>{delete customFormations[String(state.format)];localStorage.setItem(FORMATION_KEY,JSON.stringify(customFormations));render();});
-$('duration').addEventListener('change',e=>{state.duration=e.target.value;state.history={};resetClock();});
-$('interval').addEventListener('change',e=>{const minutes=Number(e.target.value);if(!Number.isInteger(minutes)||minutes<5||minutes>40||minutes%5!==0)return;state.interval=minutes;state.history={};resetClock();});
+$('duration').addEventListener('change',e=>{state.duration=e.target.value;state.history={};state.exactLineup=null;resetClock();});
+$('interval').addEventListener('change',e=>{const minutes=Number(e.target.value);if(!Number.isInteger(minutes)||minutes<5||minutes>40||minutes%5!==0)return;state.interval=minutes;state.history={};state.exactLineup=null;resetClock();});
 
-$('addPlayer').addEventListener('click',()=>{if(count()>=state.format+6)return alert('Maximaal 6 extra wisselspelers.');state.names.push(`Speler ${count()+1}`);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.history={};save();render();openNames();});
-$('removePlayer').addEventListener('click',()=>{if(count()<=state.format)return alert('Er moeten genoeg spelers voor het veld zijn.');state.names.pop();state.defenders=defenders().filter(i=>i<state.names.length);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.history={};save();render();openNames();});
+$('addPlayer').addEventListener('click',()=>{if(count()>=state.format+6)return alert('Maximaal 6 extra wisselspelers.');state.names.push(`Speler ${count()+1}`);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.history={};state.exactLineup=null;save();render();openNames();});
+$('removePlayer').addEventListener('click',()=>{if(count()<=state.format)return alert('Er moeten genoeg spelers voor het veld zijn.');state.names.pop();state.defenders=defenders().filter(i=>i<state.names.length);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.history={};state.exactLineup=null;save();render();openNames();});
 function openNames(){$('namesPanel').hidden=false;$('nameFields').innerHTML='';state.names.forEach((v,i)=>{const label=document.createElement('label');label.textContent=`Speler ${i+1}`;const inp=document.createElement('input');inp.value=v;inp.maxLength=30;label.appendChild(inp);$('nameFields').appendChild(label);});}
 function toggleNames(){if($('namesPanel').hidden){openNames();$('namesPanel').scrollIntoView({behavior:'smooth',block:'center'});}else $('namesPanel').hidden=true;}
 $('editNames').addEventListener('click',toggleNames);
 $('editNamesNearField').addEventListener('click',()=>{openNames();$('namesPanel').scrollIntoView({behavior:'smooth',block:'center'});});
-$('saveNames').addEventListener('click',()=>{state.names=[...$('nameFields').querySelectorAll('input')].map((x,i)=>x.value.trim()||`Speler ${i+1}`);$('namesPanel').hidden=true;state.history={};save();render();});
+$('saveNames').addEventListener('click',()=>{state.names=[...$('nameFields').querySelectorAll('input')].map((x,i)=>x.value.trim()||`Speler ${i+1}`);$('namesPanel').hidden=true;state.history={};state.exactLineup=null;save();render();});
 $('slots').addEventListener('click',e=>{const b=e.target.closest('[data-slot]');if(b){state.elapsed=Number(b.dataset.slot)*state.interval*60;state.running=false;state.halftime=isBreakPoint(state.elapsed);save();render();}});
 $('tableBody').addEventListener('click',e=>{
  const edit=e.target.closest('[data-edit]');if(edit){openSlotEditor(Number(edit.dataset.edit));return;}
@@ -227,7 +233,7 @@ function renderDefenderPicker(){
   const cb=document.createElement('input');cb.type='checkbox';cb.checked=selected.has(i);
   cb.addEventListener('change',()=>{
    const next=new Set(defenders());if(cb.checked)next.add(i);else next.delete(i);
-   state.defenders=[...next];state.history={};save();render();
+   state.defenders=[...next];state.history={};state.exactLineup=null;save();render();
   });
   label.append(cb,document.createTextNode(' '+nm));$('defenderChoices').appendChild(label);
  });
@@ -279,7 +285,7 @@ $('applyLineup').addEventListener('click',()=>{
  state.startingKeeper=Number($('startingKeeper').value);
  if(state.manualBench.includes(state.startingKeeper))return alert('De keeper mag niet op de wisselbank staan.');
  // Zelf gekozen beginwissels zijn altijd toegestaan, ongeacht de spelersrollen.
- state.fieldOrder=[];state.history={};resetClock();
+ state.fieldOrder=[];state.history={};state.exactLineup=null;resetClock();
 });
 // Hold a player name for 3 seconds, then tap another name to exchange players.
 // Drag a player to move that formation position without changing the player name.
@@ -538,6 +544,7 @@ function openSavedLineup(item,confirmed=false){
   state.elapsed=0;state.running=false;state.halftime=false;
   // Reuse the stored schedule for this match under its new key.
   state.history={[scheduleKey()]:rows};
+  state.exactLineup={key:scheduleKey(),rows};
   if(Array.isArray(item.coords)&&item.coords.length===item.format){
    customFormations[String(item.format)]=item.coords.map(p=>({x:p.x,y:p.y}));
    localStorage.setItem(FORMATION_KEY,JSON.stringify(customFormations));
@@ -595,30 +602,45 @@ async function unpackSharedLineup(encoded){
  if(payload.type!=='coaches-wissel-opstelling'||payload.version!==1||!validSharedLineup(payload.lineup))throw Error('invalid');
  return payload.lineup;
 }
+function exactSnapshot(item){
+ const rows=item.rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}));
+ const n=item.names.length, f=item.format;
+ if(!rows.length||rows.some(r=>r.field.length!==f-1||r.bench.length!==n-f||
+  new Set([r.keeper,...r.field,...r.bench]).size!==n||
+  [r.keeper,...r.field,...r.bench].some(i=>!Number.isInteger(i)||i<0||i>=n)))throw Error('Invalid lineup');
+ return {...item,rows,startingKeeper:rows[0].keeper,manualBench:[...rows[0].bench],fieldOrder:[...rows[0].field]};
+}
+function sameSharedSnapshot(a,b){
+ const keys=['format','interval','duration','names','rows','coords'];
+ return keys.every(k=>JSON.stringify(a[k]??null)===JSON.stringify(b[k]??null));
+}
 async function shareSavedLineup(item){
  try{
   const fixedRows=item.rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}));
   const expectedBench=item.names.length-item.format;
   const coherent=fixedRows.every(r=>new Set([r.keeper,...r.field,...r.bench]).size===item.names.length&&r.field.length===item.format-1&&r.bench.length===expectedBench);
   if(!coherent){alert('Deze opgeslagen opstelling bevat een onjuist wisselschema. Open de juiste opstelling en gebruik de knop Deel huidige opstelling onder het veld.');return;}
-  const packed=await packSharedLineup({...item,rows:fixedRows,startingKeeper:fixedRows[0].keeper,manualBench:[...fixedRows[0].bench],fieldOrder:[...fixedRows[0].field]});
+  const snapshot=exactSnapshot(item);
+  const packed=await packSharedLineup(snapshot);
+  const decoded=await unpackSharedLineup(packed);
+  if(!sameSharedSnapshot(snapshot,decoded))throw Error('Roundtrip mismatch');
   const url=new URL('./index.html',location.href);
   url.hash='opstelling='+packed;
   if(url.href.length>14000){
    alert('Deze opstelling maakt de WhatsApp-link te lang. Gebruik de knop Gedeelde opstelling openen om een bestand te importeren; voor delen is dan een bestand nodig.');return;
   }
-  const message=`⚽ Opstelling: ${item.title}\nOpen de link om de opstelling rechtstreeks in De Coaches Wissel App te bekijken en op te slaan:\n${url.href}`;
+  const message=`⚽ Opstelling (V39): ${item.title}\nOpen de link om de opstelling rechtstreeks in De Coaches Wissel App te bekijken en op te slaan:\n${url.href}`;
   if(navigator.share){
    try{await navigator.share({title:`Opstelling: ${item.title}`,text:message});return;}
    catch(e){if(e.name==='AbortError')return;}
   }
   window.open('https://wa.me/?text='+encodeURIComponent(message),'_blank','noopener');
- }catch(e){alert('Link maken is niet gelukt. Probeer opnieuw.');}
+ }catch(e){alert('Delen gestopt: de opstelling kon niet exact worden gecontroleerd. '+(e?.message||''));}
 }
 function addImportedLineup(shared){
  const coherent=shared.rows.every(r=>r.field.length===shared.format-1&&r.bench.length===shared.names.length-shared.format&&new Set([r.keeper,...r.field,...r.bench]).size===shared.names.length);
  if(!coherent){alert('Deze link bevat een oude of onjuiste opstelling. Vraag de coach om de opstelling opnieuw te delen vanuit V38.');return false;}
- const normalized=shared.rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}));
+ const normalized=exactSnapshot(shared).rows;
  const item={...shared,rows:normalized,startingKeeper:normalized[0].keeper,manualBench:[...normalized[0].bench],fieldOrder:[...normalized[0].field],id:Date.now()+'-'+Math.random().toString(36).slice(2,8),title:shared.title.slice(0,80),date:new Date().toISOString()};
  const list=readSavedLineups();list.unshift(item);
  if(!writeSavedLineups(list))return false;
