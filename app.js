@@ -475,7 +475,8 @@ function renderSavedLineups(){
    if(!confirm(`Opstelling "${item.title}" verwijderen?`))return;
    if(writeSavedLineups(readSavedLineups().filter(v=>v.id!==item.id)))renderSavedLineups();
   });
-  actions.append(open,del);wrap.append(info,actions);target.append(wrap);
+  const share=document.createElement('button');share.className='secondary';share.textContent='↗ WhatsApp delen';share.addEventListener('click',()=>shareSavedLineup(item));
+  actions.append(open,share,del);wrap.append(info,actions);target.append(wrap);
  });
 }
 function openSavedLineup(item){
@@ -506,3 +507,48 @@ function openSavedLineup(item){
 $('saveCurrentLineup').addEventListener('click',saveCurrentLineup);
 $('menuSavedLineups').addEventListener('click',()=>showScreen('savedLineups'));
 $('savedLineupsBack').addEventListener('click',()=>showScreen('home'));
+
+
+// V33: share a portable, versioned lineup file (no accounts or server needed).
+function safeShareName(title){return String(title||'opstelling').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'-').slice(0,55)||'opstelling';}
+async function shareSavedLineup(item){
+ const payload={type:'coaches-wissel-opstelling',version:1,lineup:item};
+ const filename=`coaches-opstelling-${safeShareName(item.title)}.json`;
+ const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+ const file=new File([blob],filename,{type:'application/json'});
+ try{
+  if(navigator.share&&navigator.canShare?.({files:[file]})){
+   await navigator.share({files:[file],title:`Opstelling: ${item.title}`,text:'Open dit opstellingsbestand in De Coaches Wissel App via Menu → Opgeslagen opstellingen → Gedeelde opstelling openen.'});
+   return;
+  }
+ }catch(e){if(e.name==='AbortError')return;}
+ const url=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),30000);
+ alert('Opstelling als bestand opgeslagen. Deel dit JSON-bestand via WhatsApp. De andere coach importeert het via Menu → Opgeslagen opstellingen → Gedeelde opstelling openen.');
+}
+function validSharedLineup(item){
+ return item&&typeof item==='object'&&typeof item.title==='string'&&item.title.length<=200&&
+ [6,8,11].includes(item.format)&&Array.isArray(item.names)&&item.names.length>=item.format&&item.names.length<=40&&
+ item.names.every(n=>typeof n==='string'&&n.length<=120)&&
+ Number.isInteger(item.interval)&&item.interval>=5&&item.interval<=45&&
+ ['40','60q','60h','70','80','90',40,70,80,90].includes(item.duration)&&
+ Array.isArray(item.rows)&&item.rows.length>0&&item.rows.length<=25&&item.rows.every(r=>r&&
+ Number.isInteger(r.keeper)&&r.keeper>=0&&r.keeper<item.names.length&&
+ Array.isArray(r.field)&&Array.isArray(r.bench)&&
+ [...r.field,...r.bench].every(n=>Number.isInteger(n)&&n>=0&&n<item.names.length))&&
+ (!item.coords||(Array.isArray(item.coords)&&item.coords.length===item.format&&item.coords.every(p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y))));
+}
+$('importSharedLineup').addEventListener('click',()=>$('sharedLineupFile').click());
+$('sharedLineupFile').addEventListener('change',async e=>{
+ const file=e.target.files?.[0];e.target.value='';if(!file)return;
+ if(file.size>250000){alert('Bestand is te groot voor een opstelling.');return;}
+ try{
+  const payload=JSON.parse(await file.text());
+  if(payload.type!=='coaches-wissel-opstelling'||payload.version!==1||!validSharedLineup(payload.lineup))throw Error('invalid');
+  const item={...payload.lineup,id:Date.now()+'-'+Math.random().toString(36).slice(2,8),title:payload.lineup.title.slice(0,80),date:new Date().toISOString()};
+  if(!confirm(`Gedeelde opstelling "${item.title}" toevoegen aan jouw opgeslagen opstellingen?`))return;
+  const list=readSavedLineups();list.unshift(item);
+  if(writeSavedLineups(list)){renderSavedLineups();notify('Gedeelde opstelling toegevoegd. Tik op Openen om te gebruiken.');}
+ }catch(err){alert('Dit bestand is geen geldige gedeelde opstelling van De Coaches Wissel App.');}
+});

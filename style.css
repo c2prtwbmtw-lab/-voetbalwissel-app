@@ -112,3 +112,5 @@ tr.active{background:var(--club-tint)}
 
 /* V30: alarm test control */
 .test-alarm{display:block;margin-top:12px;min-width:160px}
+
+.share-import{padding:12px 0;border-bottom:1px solid #ddd}.share-import button{max-width:100%}.saved-lineup-actions{flex-wrap:wrap}
