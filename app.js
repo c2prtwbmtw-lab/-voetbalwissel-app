@@ -495,6 +495,28 @@ function renderSavedLineups(){
   actions.append(open,share,del);wrap.append(info,actions);target.append(wrap);
  });
 }
+// Repair older shared schedules: each time slot must have exactly format-1
+// outfield players, one goalkeeper, and the remaining players on the bench.
+// Prefer the explicitly saved on-field players; never interpret the entire
+// saved bench list as authoritative when it contains too many players.
+function normalizeSharedRows(item){
+ const n=item.names.length, f=item.format;
+ return item.rows.map((r,slot)=>{
+  const valid=i=>Number.isInteger(i)&&i>=0&&i<n;
+  let keeper=valid(r.keeper)?r.keeper:(valid(item.startingKeeper)?item.startingKeeper:0);
+  const unique=arr=>[...new Set((Array.isArray(arr)?arr:[]).filter(valid))];
+  const field=unique(r.field).filter(i=>i!==keeper);
+  const bench=unique(r.bench).filter(i=>i!==keeper&&!field.includes(i));
+  // If a legacy share put too many players on the bench, reconstruct from
+  // known pitch positions, then use the saved bench as the last resort.
+  const preferred=slot===0?unique(item.fieldOrder):[];
+  for(const i of preferred)if(i!==keeper&&!field.includes(i)&&field.length<f-1)field.push(i);
+  for(let i=0;i<n&&field.length<f-1;i++)if(i!==keeper&&!field.includes(i)&&!bench.includes(i))field.push(i);
+  for(let i=0;i<n&&field.length<f-1;i++)if(i!==keeper&&!field.includes(i))field.push(i);
+  const pitch=field.slice(0,f-1);
+  return {keeper,field:pitch,bench:Array.from({length:n},(_,i)=>i).filter(i=>i!==keeper&&!pitch.includes(i))};
+ });
+}
 function openSavedLineup(item,confirmed=false){
  if(state.running){alert('Pauzeer eerst de wedstrijd voordat je een opstelling opent.');return;}
  if(!Array.isArray(item.names)||!Array.isArray(item.rows)||![6,8,11].includes(item.format)){
@@ -510,7 +532,7 @@ function openSavedLineup(item,confirmed=false){
   state.manualBench=[...(item.manualBench||[])];state.fieldOrder=[...(item.fieldOrder||[])];
   // Start at the beginning of the loaded lineup; do not overwrite scores or match archive.
   state.elapsed=0;state.running=false;state.halftime=false;
-  const rows=item.rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}));
+  const rows=normalizeSharedRows(item);
   // Reuse the stored schedule for this match under its new key.
   state.history={[scheduleKey()]:rows};
   if(Array.isArray(item.coords)&&item.coords.length===item.format){
@@ -560,7 +582,7 @@ async function unpackSharedLineup(encoded){
 }
 async function shareSavedLineup(item){
  try{
-  const packed=await packSharedLineup(item);
+  const packed=await packSharedLineup({...item,rows:normalizeSharedRows(item)});
   const url=new URL('./index.html',location.href);
   url.hash='opstelling='+packed;
   if(url.href.length>14000){
@@ -575,7 +597,7 @@ async function shareSavedLineup(item){
  }catch(e){alert('Link maken is niet gelukt. Probeer opnieuw.');}
 }
 function addImportedLineup(shared){
- const item={...shared,id:Date.now()+'-'+Math.random().toString(36).slice(2,8),title:shared.title.slice(0,80),date:new Date().toISOString()};
+ const item={...shared,rows:normalizeSharedRows(shared),id:Date.now()+'-'+Math.random().toString(36).slice(2,8),title:shared.title.slice(0,80),date:new Date().toISOString()};
  const list=readSavedLineups();list.unshift(item);
  if(!writeSavedLineups(list))return false;
  showScreen('savedLineups');renderSavedLineups();
