@@ -185,7 +185,9 @@ $('interval').addEventListener('change',e=>{const minutes=Number(e.target.value)
 $('addPlayer').addEventListener('click',()=>{if(count()>=state.format+6)return alert('Maximaal 6 extra wisselspelers.');state.names.push(`Speler ${count()+1}`);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.history={};save();render();openNames();});
 $('removePlayer').addEventListener('click',()=>{if(count()<=state.format)return alert('Er moeten genoeg spelers voor het veld zijn.');state.names.pop();state.defenders=defenders().filter(i=>i<state.names.length);state.manualBench=[];state.startingKeeper=null;state.fieldOrder=[];state.history={};save();render();openNames();});
 function openNames(){$('namesPanel').hidden=false;$('nameFields').innerHTML='';state.names.forEach((v,i)=>{const label=document.createElement('label');label.textContent=`Speler ${i+1}`;const inp=document.createElement('input');inp.value=v;inp.maxLength=30;label.appendChild(inp);$('nameFields').appendChild(label);});}
-$('editNames').addEventListener('click',()=>{$('namesPanel').hidden?openNames():$('namesPanel').hidden=true;});
+function toggleNames(){if($('namesPanel').hidden){openNames();$('namesPanel').scrollIntoView({behavior:'smooth',block:'center'});}else $('namesPanel').hidden=true;}
+$('editNames').addEventListener('click',toggleNames);
+$('editNamesNearField').addEventListener('click',()=>{openNames();$('namesPanel').scrollIntoView({behavior:'smooth',block:'center'});});
 $('saveNames').addEventListener('click',()=>{state.names=[...$('nameFields').querySelectorAll('input')].map((x,i)=>x.value.trim()||`Speler ${i+1}`);$('namesPanel').hidden=true;state.history={};save();render();});
 $('slots').addEventListener('click',e=>{const b=e.target.closest('[data-slot]');if(b){state.elapsed=Number(b.dataset.slot)*state.interval*60;state.running=false;state.halftime=isBreakPoint(state.elapsed);save();render();}});
 $('tableBody').addEventListener('click',e=>{
@@ -379,7 +381,8 @@ function archiveMatch(){
   id:Date.now(),match:state.match,date:new Date().toISOString(),
   format:state.format,interval:state.interval,duration:String(state.duration),
   elapsed:state.elapsed,score:{...currentScore()},names:[...state.names],
-  schedule:schedule().map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}))
+  schedule:schedule().map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]})),
+  defenders:[...defenders()],keeperMode:state.keeperMode,fixedKeeper:state.fixedKeeper,startingKeeper:state.startingKeeper,manualBench:[...state.manualBench],fieldOrder:[...state.fieldOrder],coords:positions().map(p=>({x:p.x,y:p.y}))
  };
  records.unshift(snapshot);
  try{localStorage.setItem(ARCHIVE_KEY,JSON.stringify(records));}
@@ -406,9 +409,22 @@ function openArchiveDetail(index){
   <h3>Wedstrijd ${archiveText(r.match)} · ${archiveText(new Date(r.date).toLocaleDateString('nl-NL'))}</h3>
   <div class="archive-score">${archiveText(r.score.home)} – ${archiveText(r.score.away)}</div>
   <p>${archiveText(r.format)} tegen ${archiveText(r.format)} · ${archiveText(d.label)} · Wisselen om de ${archiveText(r.interval)} minuten</p>
-  <p class="hint">Opgeslagen opstelling (alleen bekijken)</p>
+  <p class="hint">Deze wedstrijd blijft in de historie bewaard. Je kunt een bewerkbare kopie openen, aanpassen, opnieuw opslaan en delen.</p>
+  <button id="editArchivedLineup" type="button">✎ Als opstelling bewerken</button>
   <div class="table-wrap"><table><thead><tr><th>Min.</th><th>Keeper</th><th>Wisselbank</th></tr></thead><tbody>${r.schedule.map((s,i)=>`<tr><td>${i*r.interval}–${Math.min(d.total,(i+1)*r.interval)}</td><td>${n(s.keeper)}</td><td>${s.bench.map(n).join(' · ')||'—'}</td></tr>`).join('')}</tbody></table></div>`;
  $('archiveListBack').addEventListener('click',renderArchive);
+ $('editArchivedLineup').addEventListener('click',()=>editArchivedLineup(r));
+}
+function editArchivedLineup(r){
+ if(state.running){alert('Pauzeer eerst de wedstrijd.');return;}
+ const item={id:'archive-'+r.id,title:`Wedstrijd ${r.match} · bewerkbare kopie`,date:new Date().toISOString(),
+  format:Number(r.format),interval:Number(r.interval),duration:String(r.duration),names:[...r.names],
+  defenders:Array.isArray(r.defenders)?r.defenders:null,keeperMode:r.keeperMode||'rotate',
+  fixedKeeper:r.fixedKeeper??null,startingKeeper:r.startingKeeper??null,
+  manualBench:Array.isArray(r.manualBench)?r.manualBench:[],fieldOrder:Array.isArray(r.fieldOrder)?r.fieldOrder:[],
+  rows:r.schedule.map(v=>({keeper:v.keeper,field:[...v.field],bench:[...v.bench]})),coords:r.coords||null};
+ if(!confirm('Een bewerkbare kopie van deze wedstrijd openen? De oorspronkelijke wedstrijdhistorie blijft ongewijzigd.'))return;
+ openSavedLineup(item,true);
 }
 function showScreen(screen){
  $('mainView').hidden=screen!=='home';
@@ -479,12 +495,12 @@ function renderSavedLineups(){
   actions.append(open,share,del);wrap.append(info,actions);target.append(wrap);
  });
 }
-function openSavedLineup(item){
+function openSavedLineup(item,confirmed=false){
  if(state.running){alert('Pauzeer eerst de wedstrijd voordat je een opstelling opent.');return;}
  if(!Array.isArray(item.names)||!Array.isArray(item.rows)||![6,8,11].includes(item.format)){
   alert('Deze opstelling kan niet worden geopend.');return;
  }
- if(!confirm(`Opstelling "${item.title}" openen? De huidige niet-opgeslagen opstelling wordt vervangen. Je wedstrijdhistorie blijft bewaard.`))return;
+ if(!confirmed&&!confirm(`Opstelling "${item.title}" openen? De huidige niet-opgeslagen opstelling wordt vervangen. Je wedstrijdhistorie blijft bewaard.`))return;
  const backup=JSON.parse(JSON.stringify(state));
  try{
   state.format=item.format;state.interval=item.interval;state.duration=item.duration;
