@@ -525,24 +525,77 @@ $('menuSavedLineups').addEventListener('click',()=>showScreen('savedLineups'));
 $('savedLineupsBack').addEventListener('click',()=>showScreen('home'));
 
 
-// V33: share a portable, versioned lineup file (no accounts or server needed).
+// V35: direct WhatsApp links; the lineup is embedded in the URL, no server/account.
 function safeShareName(title){return String(title||'opstelling').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'-').slice(0,55)||'opstelling';}
-async function shareSavedLineup(item){
- const payload={type:'coaches-wissel-opstelling',version:1,lineup:item};
- const filename=`coaches-opstelling-${safeShareName(item.title)}.json`;
- const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
- const file=new File([blob],filename,{type:'application/json'});
- try{
-  if(navigator.share&&navigator.canShare?.({files:[file]})){
-   await navigator.share({files:[file],title:`Opstelling: ${item.title}`,text:'Open dit opstellingsbestand in De Coaches Wissel App via Menu → Opgeslagen opstellingen → Gedeelde opstelling openen.'});
-   return;
-  }
- }catch(e){if(e.name==='AbortError')return;}
- const url=URL.createObjectURL(blob),link=document.createElement('a');
- link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();
- setTimeout(()=>URL.revokeObjectURL(url),30000);
- alert('Opstelling als bestand opgeslagen. Deel dit JSON-bestand via WhatsApp. De andere coach importeert het via Menu → Opgeslagen opstellingen → Gedeelde opstelling openen.');
+function bytesToBase64Url(bytes){
+ let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+ return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 }
+function base64UrlToBytes(encoded){
+ if(!/^[A-Za-z0-9_-]+$/.test(encoded)||encoded.length>30000)throw Error('invalid link');
+ const binary=atob(encoded.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-encoded.length%4)%4));
+ return Uint8Array.from(binary,c=>c.charCodeAt(0));
+}
+async function packSharedLineup(item){
+ const bytes=new TextEncoder().encode(JSON.stringify({type:'coaches-wissel-opstelling',version:1,lineup:item}));
+ if(bytes.length>250000)throw Error('too large');
+ if(typeof CompressionStream==='function'){
+  const stream=new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+  return 'gz.'+bytesToBase64Url(new Uint8Array(await new Response(stream).arrayBuffer()));
+ }
+ return 'raw.'+bytesToBase64Url(bytes);
+}
+async function unpackSharedLineup(encoded){
+ const separator=encoded.indexOf('.');if(separator<0)throw Error('invalid');
+ const kind=encoded.slice(0,separator),bytes=base64UrlToBytes(encoded.slice(separator+1));
+ let output=bytes;
+ if(kind==='gz'){
+  if(typeof DecompressionStream!=='function')throw Error('unsupported');
+  output=new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+ }else if(kind!=='raw')throw Error('invalid');
+ if(output.length>250000)throw Error('too large');
+ const payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(output));
+ if(payload.type!=='coaches-wissel-opstelling'||payload.version!==1||!validSharedLineup(payload.lineup))throw Error('invalid');
+ return payload.lineup;
+}
+async function shareSavedLineup(item){
+ try{
+  const packed=await packSharedLineup(item);
+  const url=new URL('./index.html',location.href);
+  url.hash='opstelling='+packed;
+  if(url.href.length>14000){
+   alert('Deze opstelling maakt de WhatsApp-link te lang. Gebruik de knop Gedeelde opstelling openen om een bestand te importeren; voor delen is dan een bestand nodig.');return;
+  }
+  const message=`⚽ Opstelling: ${item.title}\nOpen de link om de opstelling rechtstreeks in De Coaches Wissel App te bekijken en op te slaan:\n${url.href}`;
+  if(navigator.share){
+   try{await navigator.share({title:`Opstelling: ${item.title}`,text:message});return;}
+   catch(e){if(e.name==='AbortError')return;}
+  }
+  window.open('https://wa.me/?text='+encodeURIComponent(message),'_blank','noopener');
+ }catch(e){alert('Link maken is niet gelukt. Probeer opnieuw.');}
+}
+function addImportedLineup(shared){
+ const item={...shared,id:Date.now()+'-'+Math.random().toString(36).slice(2,8),title:shared.title.slice(0,80),date:new Date().toISOString()};
+ const list=readSavedLineups();list.unshift(item);
+ if(!writeSavedLineups(list))return false;
+ showScreen('savedLineups');renderSavedLineups();
+ if(confirm(`Opstelling "${item.title}" is opgeslagen. Wil je hem nu direct openen?`))openSavedLineup(item,true);
+ else notify('Opstelling opgeslagen onder ☰ Menu → Opgeslagen opstellingen');
+ return true;
+}
+async function handleSharedLink(){
+ const match=location.hash.match(/^#opstelling=(.+)$/);
+ if(!match)return;
+ // Clear the fragment so it is not imported again after every reload.
+ history.replaceState(null,'',location.pathname+location.search);
+ try{
+  const item=await unpackSharedLineup(match[1]);
+  if(!confirm(`Gedeelde opstelling "${item.title}" ontvangen. Wil je deze toevoegen aan jouw opgeslagen opstellingen?`))return;
+  addImportedLineup(item);
+ }catch(e){alert('Deze gedeelde opstellingslink kan niet worden geopend. Vraag de coach om een nieuwe link te sturen.');}
+}
+window.addEventListener('hashchange',handleSharedLink);
+if(location.hash.startsWith('#opstelling='))handleSharedLink();
 function validSharedLineup(item){
  return item&&typeof item==='object'&&typeof item.title==='string'&&item.title.length<=200&&
  [6,8,11].includes(item.format)&&Array.isArray(item.names)&&item.names.length>=item.format&&item.names.length<=40&&
@@ -562,9 +615,7 @@ $('sharedLineupFile').addEventListener('change',async e=>{
  try{
   const payload=JSON.parse(await file.text());
   if(payload.type!=='coaches-wissel-opstelling'||payload.version!==1||!validSharedLineup(payload.lineup))throw Error('invalid');
-  const item={...payload.lineup,id:Date.now()+'-'+Math.random().toString(36).slice(2,8),title:payload.lineup.title.slice(0,80),date:new Date().toISOString()};
-  if(!confirm(`Gedeelde opstelling "${item.title}" toevoegen aan jouw opgeslagen opstellingen?`))return;
-  const list=readSavedLineups();list.unshift(item);
-  if(writeSavedLineups(list)){renderSavedLineups();notify('Gedeelde opstelling toegevoegd. Tik op Openen om te gebruiken.');}
+  if(!confirm(`Gedeelde opstelling "${payload.lineup.title}" toevoegen aan jouw opgeslagen opstellingen?`))return;
+  addImportedLineup(payload.lineup);
  }catch(err){alert('Dit bestand is geen geldige gedeelde opstelling van De Coaches Wissel App.');}
 });
