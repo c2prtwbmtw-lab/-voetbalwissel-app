@@ -469,7 +469,7 @@ function saveCurrentLineup(){
   format:state.format,interval:state.interval,duration:state.duration,names:[...state.names],
   defenders:Array.isArray(state.defenders)?[...state.defenders]:null,
   keeperMode:state.keeperMode,fixedKeeper:state.fixedKeeper,
-  startingKeeper:state.startingKeeper,manualBench:[...state.manualBench],fieldOrder:[...state.fieldOrder],
+  startingKeeper:rows[0].keeper,manualBench:[...rows[0].bench],fieldOrder:[...rows[0].field],
   match:state.match,slot:currentSlot(),
   rows:rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]})),
   coords:positions().map(p=>({x:p.x,y:p.y}))};
@@ -528,11 +528,14 @@ function openSavedLineup(item,confirmed=false){
   state.format=item.format;state.interval=item.interval;state.duration=item.duration;
   state.names=[...item.names];state.defenders=Array.isArray(item.defenders)?[...item.defenders]:null;
   state.keeperMode=item.keeperMode||'rotate';state.fixedKeeper=item.fixedKeeper??null;
-  state.startingKeeper=item.startingKeeper??null;
-  state.manualBench=[...(item.manualBench||[])];state.fieldOrder=[...(item.fieldOrder||[])];
+  // The saved schedule is authoritative. Metadata from older versions can
+  // contradict it (e.g. the goalkeeper also listed on the bench).
+  const rows=normalizeSharedRows(item);
+  state.startingKeeper=rows[0].keeper;
+  state.manualBench=[...rows[0].bench];
+  state.fieldOrder=[...rows[0].field];
   // Start at the beginning of the loaded lineup; do not overwrite scores or match archive.
   state.elapsed=0;state.running=false;state.halftime=false;
-  const rows=normalizeSharedRows(item);
   // Reuse the stored schedule for this match under its new key.
   state.history={[scheduleKey()]:rows};
   if(Array.isArray(item.coords)&&item.coords.length===item.format){
@@ -582,7 +585,8 @@ async function unpackSharedLineup(encoded){
 }
 async function shareSavedLineup(item){
  try{
-  const packed=await packSharedLineup({...item,rows:normalizeSharedRows(item)});
+  const fixedRows=normalizeSharedRows(item);
+  const packed=await packSharedLineup({...item,rows:fixedRows,startingKeeper:fixedRows[0].keeper,manualBench:[...fixedRows[0].bench],fieldOrder:[...fixedRows[0].field]});
   const url=new URL('./index.html',location.href);
   url.hash='opstelling='+packed;
   if(url.href.length>14000){
@@ -597,7 +601,8 @@ async function shareSavedLineup(item){
  }catch(e){alert('Link maken is niet gelukt. Probeer opnieuw.');}
 }
 function addImportedLineup(shared){
- const item={...shared,rows:normalizeSharedRows(shared),id:Date.now()+'-'+Math.random().toString(36).slice(2,8),title:shared.title.slice(0,80),date:new Date().toISOString()};
+ const normalized=normalizeSharedRows(shared);
+ const item={...shared,rows:normalized,startingKeeper:normalized[0].keeper,manualBench:[...normalized[0].bench],fieldOrder:[...normalized[0].field],id:Date.now()+'-'+Math.random().toString(36).slice(2,8),title:shared.title.slice(0,80),date:new Date().toISOString()};
  const list=readSavedLineups();list.unshift(item);
  if(!writeSavedLineups(list))return false;
  showScreen('savedLineups');renderSavedLineups();
