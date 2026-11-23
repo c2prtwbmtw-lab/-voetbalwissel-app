@@ -1,0 +1,32 @@
+<!doctype html><html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Gedeelde opstelling · Coaches Wissel App V40</title><style>
+:root{font-family:system-ui,-apple-system,sans-serif;color:#202020;background:#fff6ed}body{margin:0;padding:18px;max-width:720px;margin-inline:auto}main{background:white;border-radius:22px;padding:22px;box-shadow:0 3px 16px #0001}h1{font-size:1.5rem}h2{font-size:1.15rem}button{border:0;border-radius:12px;background:#e9752b;color:white;padding:16px;font-size:1.1rem;font-weight:700;width:100%;margin:10px 0}button:disabled{opacity:.5}.muted{color:#555}table{width:100%;border-collapse:collapse}th,td{padding:12px 6px;text-align:left;border-bottom:1px solid #ddd;vertical-align:top}th{font-size:.9rem;color:#666}#status{padding:12px 0}strong{font-weight:750}.chip{display:inline-block;background:#ffecd9;border-radius:12px;padding:8px;margin:5px 4px 5px 0}
+</style></head><body><main><h1>⚽ Gedeelde opstelling <small>V40</small></h1><p class="muted">Bekijk de ontvangen opstelling voordat je deze opent. Spelers en wissels worden niet opnieuw berekend.</p><div id="status">Link wordt gecontroleerd…</div><section id="preview" hidden><h2 id="title"></h2><div id="summary"></div><h2>Beginopstelling</h2><p id="first"></p><h2>Wisselschema</h2><table><thead><tr><th>Tijd</th><th>Keeper</th><th>Wisselbank</th></tr></thead><tbody id="rows"></tbody></table><button id="import">✓ Open deze opstelling in de app</button><p class="muted">De opstelling wordt op dit toestel opgeslagen. Bestaande wedstrijden en opstellingen blijven behouden.</p></section></main><script>
+(async()=>{
+const $=id=>document.getElementById(id);let item;
+function decode64(s){const x=s.replace(/-/g,'+').replace(/_/g,'/');const raw=atob(x+'='.repeat((4-x.length%4)%4));return Uint8Array.from(raw,c=>c.charCodeAt(0));}
+function uniqueValid(row,n,format){const a=[row.keeper,...row.field,...row.bench];return row.field.length===format-1&&row.bench.length===n-format&&a.length===n&&new Set(a).size===n&&a.every(i=>Number.isInteger(i)&&i>=0&&i<n);}
+try{
+const m=location.hash.match(/^#opstelling=(gz|raw)\.([a-zA-Z0-9_-]+)$/);if(!m)throw Error('Geen geldige gedeelde opstelling gevonden.');
+const bytes=decode64(m[2]);let raw=bytes;
+if(m[1]==='gz'){if(!window.DecompressionStream)throw Error('Deze browser kan de link niet uitpakken. Open de link in Safari.');raw=new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());}
+if(raw.length>250000)throw Error('Opstelling is te groot.');
+const payload=JSON.parse(new TextDecoder().decode(raw));item=payload.lineup;
+if(payload.type!=='coaches-wissel-opstelling'||payload.version!==1||!item||![6,8,11].includes(item.format)||!Array.isArray(item.names)||!Array.isArray(item.rows)||!item.rows.length||item.names.length<item.format||item.names.length>40||!item.rows.every(r=>uniqueValid(r,item.names.length,item.format)))throw Error('De gedeelde opstelling is ongeldig of onvolledig.');
+const n=i=>item.names[i];const first=item.rows[0];
+$('title').textContent=item.title||'Ontvangen opstelling';
+$('summary').textContent=`${item.format} tegen ${item.format} · ${item.names.length} spelers · ${item.rows.length} tijdvakken`;
+$('first').textContent=`Keeper: ${n(first.keeper)} · Veld: ${first.field.map(n).join(', ')} · Bank: ${first.bench.map(n).join(', ')}`;
+item.rows.forEach((r,i)=>{const tr=document.createElement('tr');const vals=[`${i*item.interval}–${Math.min((i+1)*item.interval, item.rows.length*item.interval)}`,n(r.keeper),r.bench.map(n).join(' · ')];vals.forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.append(td)});$('rows').append(tr)});
+$('status').textContent='✓ Opstelling gecontroleerd. Controleer hieronder de spelers voordat je opent.';$('preview').hidden=false;
+$('import').addEventListener('click',()=>{
+ try{
+  const key='coaches-saved-lineups-v1';const list=JSON.parse(localStorage.getItem(key)||'[]');if(!Array.isArray(list))throw Error('Opslag is ongeldig');
+  const id='shared40-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
+  const snapshot={...item,id,date:new Date().toISOString(),title:String(item.title||'Gedeelde opstelling').slice(0,80),rows:item.rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]})),startingKeeper:first.keeper,manualBench:[...first.bench],fieldOrder:[...first.field]};
+  list.unshift(snapshot);localStorage.setItem(key,JSON.stringify(list));
+  location.href='./index.html?v=40#open-shared='+id;
+ }catch(e){$('status').textContent='Opslaan mislukt: '+e.message;}
+});
+}catch(e){$('status').textContent='⚠ '+e.message;}
+})();
+</script></body></html>

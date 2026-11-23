@@ -624,12 +624,12 @@ async function shareSavedLineup(item){
   const packed=await packSharedLineup(snapshot);
   const decoded=await unpackSharedLineup(packed);
   if(!sameSharedSnapshot(snapshot,decoded))throw Error('Roundtrip mismatch');
-  const url=new URL('./index.html',location.href);
+  const url=new URL('./open.html',location.href);
   url.hash='opstelling='+packed;
   if(url.href.length>14000){
    alert('Deze opstelling maakt de WhatsApp-link te lang. Gebruik de knop Gedeelde opstelling openen om een bestand te importeren; voor delen is dan een bestand nodig.');return;
   }
-  const message=`⚽ Opstelling (V39): ${item.title}\nOpen de link om de opstelling rechtstreeks in De Coaches Wissel App te bekijken en op te slaan:\n${url.href}`;
+  const message=`⚽ Opstelling (V40): ${item.title}\nOpen de link om de opstelling rechtstreeks in De Coaches Wissel App te bekijken en op te slaan:\n${url.href}`;
   if(navigator.share){
    try{await navigator.share({title:`Opstelling: ${item.title}`,text:message});return;}
    catch(e){if(e.name==='AbortError')return;}
@@ -660,6 +660,25 @@ async function handleSharedLink(){
   addImportedLineup(item);
  }catch(e){alert('Deze gedeelde opstellingslink kan niet worden geopend. Vraag de coach om een nieuwe link te sturen.');}
 }
+// V40: Import handoff from independent open.html, never recompute received rows.
+function handleV40Handoff(){
+ const match=location.hash.match(/^#open-shared=([a-zA-Z0-9_-]+)$/);
+ if(!match)return;
+ const id=match[1];
+ const item=readSavedLineups().find(x=>x.id===id);
+ if(!item){alert('De gedeelde opstelling is niet gevonden. Open de WhatsApp-link opnieuw.');return;}
+ try{
+  const rows=exactSnapshot(item).rows;
+  openSavedLineup(item,true);
+  history.replaceState(null,'',location.pathname+location.search);
+  const actual=schedule()[0];
+  if(JSON.stringify(actual)!==JSON.stringify(rows[0])||state.names.length!==item.names.length){
+   alert('Let op: de opstelling wijkt af. Gebruik de ontvangen link opnieuw en meld dit.');
+  }
+ }catch(e){alert('De gedeelde opstelling kon niet worden geopend: '+e.message);}
+}
+window.addEventListener('hashchange',()=>{handleV40Handoff();handleSharedLink();});
+if(location.hash.startsWith('#open-shared='))handleV40Handoff();
 window.addEventListener('hashchange',handleSharedLink);
 if(location.hash.startsWith('#opstelling='))handleSharedLink();
 function validSharedLineup(item){
