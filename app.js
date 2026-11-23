@@ -530,7 +530,7 @@ function openSavedLineup(item,confirmed=false){
   state.keeperMode=item.keeperMode||'rotate';state.fixedKeeper=item.fixedKeeper??null;
   // The saved schedule is authoritative. Metadata from older versions can
   // contradict it (e.g. the goalkeeper also listed on the bench).
-  const rows=normalizeSharedRows(item);
+  const rows=item.rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}));
   state.startingKeeper=rows[0].keeper;
   state.manualBench=[...rows[0].bench];
   state.fieldOrder=[...rows[0].field];
@@ -545,6 +545,18 @@ function openSavedLineup(item,confirmed=false){
   save();showScreen('home');render();notify('Opstelling geopend');
  }catch(e){state=backup;save();alert('Opstelling openen mislukt. De vorige instellingen zijn hersteld.');}
 }
+// V38: Share the exact currently displayed schedule, without rebuilding it.
+async function shareLiveLineup(){
+ if(state.running){alert('Pauzeer eerst de wedstrijd om de opstelling te delen.');return;}
+ const rows=schedule().map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}));
+ const item={id:'live-'+Date.now(),title:`${state.format} tegen ${state.format} · ${new Date().toLocaleDateString('nl-NL')}`,
+ date:new Date().toISOString(),format:state.format,interval:state.interval,duration:state.duration,
+ names:[...state.names],defenders:[...defenders()],keeperMode:state.keeperMode,fixedKeeper:state.fixedKeeper,
+ startingKeeper:rows[0].keeper,manualBench:[...rows[0].bench],fieldOrder:[...rows[0].field],
+ match:state.match,slot:currentSlot(),rows,coords:positions().map(p=>({x:p.x,y:p.y}))};
+ await shareSavedLineup(item);
+}
+$('shareLiveLineup').addEventListener('click',shareLiveLineup);
 $('saveCurrentLineup').addEventListener('click',saveCurrentLineup);
 $('menuSavedLineups').addEventListener('click',()=>showScreen('savedLineups'));
 $('savedLineupsBack').addEventListener('click',()=>showScreen('home'));
@@ -585,7 +597,10 @@ async function unpackSharedLineup(encoded){
 }
 async function shareSavedLineup(item){
  try{
-  const fixedRows=normalizeSharedRows(item);
+  const fixedRows=item.rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}));
+  const expectedBench=item.names.length-item.format;
+  const coherent=fixedRows.every(r=>new Set([r.keeper,...r.field,...r.bench]).size===item.names.length&&r.field.length===item.format-1&&r.bench.length===expectedBench);
+  if(!coherent){alert('Deze opgeslagen opstelling bevat een onjuist wisselschema. Open de juiste opstelling en gebruik de knop Deel huidige opstelling onder het veld.');return;}
   const packed=await packSharedLineup({...item,rows:fixedRows,startingKeeper:fixedRows[0].keeper,manualBench:[...fixedRows[0].bench],fieldOrder:[...fixedRows[0].field]});
   const url=new URL('./index.html',location.href);
   url.hash='opstelling='+packed;
@@ -601,7 +616,9 @@ async function shareSavedLineup(item){
  }catch(e){alert('Link maken is niet gelukt. Probeer opnieuw.');}
 }
 function addImportedLineup(shared){
- const normalized=normalizeSharedRows(shared);
+ const coherent=shared.rows.every(r=>r.field.length===shared.format-1&&r.bench.length===shared.names.length-shared.format&&new Set([r.keeper,...r.field,...r.bench]).size===shared.names.length);
+ if(!coherent){alert('Deze link bevat een oude of onjuiste opstelling. Vraag de coach om de opstelling opnieuw te delen vanuit V38.');return false;}
+ const normalized=shared.rows.map(r=>({keeper:r.keeper,field:[...r.field],bench:[...r.bench]}));
  const item={...shared,rows:normalized,startingKeeper:normalized[0].keeper,manualBench:[...normalized[0].bench],fieldOrder:[...normalized[0].field],id:Date.now()+'-'+Math.random().toString(36).slice(2,8),title:shared.title.slice(0,80),date:new Date().toISOString()};
  const list=readSavedLineups();list.unshift(item);
  if(!writeSavedLineups(list))return false;
