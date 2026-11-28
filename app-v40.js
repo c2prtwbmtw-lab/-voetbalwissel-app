@@ -358,7 +358,7 @@ function tickMatch(){
  const boundary=nextBreak(before);
  const actual=Math.max(before,Math.floor((now-state.runAnchor)/1000));
  state.elapsed=Math.min(finish,boundary,actual);
- if(isBreakPoint(state.elapsed)){
+ if(state.elapsed>before && isBreakPoint(state.elapsed)){
   state.running=false;state.halftime=true;state.runAnchor=null;
   const period=Math.round(state.elapsed/(durationInfo().minutes*60));
   notify(`🔔 RUST – Periode ${period} afgelopen!`,{alarm:true});
